@@ -1,0 +1,16 @@
+{
+  "name": "airtable-clone",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "dev:api": "npm run -w apps/api dev",
+    "dev:backend": "npm run -w apps/backend dev"
+  }
+}

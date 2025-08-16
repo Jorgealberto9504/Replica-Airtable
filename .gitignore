@@ -1,0 +1,7 @@
+# deps y builds
+node_modules
+dist
+# entorno
+.env
+apps/*/.env
+.DS_Store
