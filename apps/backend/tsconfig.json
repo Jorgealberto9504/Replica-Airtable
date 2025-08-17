@@ -1,7 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "moduleResolution": "NodeNext",
     "outDir": "dist",
     "types": ["node"],
     "esModuleInterop": true,

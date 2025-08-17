@@ -10,7 +10,7 @@
     "node": ">=20.19"
   },
   "scripts": {
-    "dev:api": "npm run -w apps/api dev",
-    "dev:backend": "npm run -w apps/backend dev"
+    "dev:backend": "npm run -w apps/backend dev",
+    "dev": "npm run dev:backend"
   }
 }
