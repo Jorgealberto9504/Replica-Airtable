@@ -14,7 +14,7 @@ datasource db {
 //SYSADMIN sera para el administrador de la plataforma, que podra crear, editar, eliminar usuarios y ser de igual forma creador
 enum PlatformRole {
   USER
-  SYSADMIN
+  SYSADMIN//super admin que se capaz de establecer quienes sera los administradores, debemos de definir que el superadmin quienes pueden crear bases de datos, no todos pueden ser creadores, no todos pueden crear bases, el usuario podra controlar quienes pueden crear mas  bases
 }
 
 // === Roles por Base (membership por base) ===

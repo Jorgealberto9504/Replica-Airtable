@@ -39,3 +39,13 @@ export async function writeUser(req: Request, res: Response) {
     res.status(500).json({ ok: false, error: 'No se pudo crear el usuario' });
   }
 }
+
+
+/*
+Ejemplo de petición POST a /db/write:
+ {
+  "email": "Saul@Saul.com",
+  "fullName": "Saul Goodman"
+}
+
+  */

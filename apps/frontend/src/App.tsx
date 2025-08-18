@@ -36,14 +36,14 @@ export default function App() {
       // --- Llamada 1: GET /health ---
       // Construimos la URL usando la base + el path.
       const resH = await fetch(`${API_URL}/health`);
-      // Validamos el status HTTP (resH.ok true si 2xx).
+      // Validamos el status de la constante resH.
       if (!resH.ok) throw new Error(`GET /health → ${resH.status}`);
       // Extraemos el cuerpo como JSON y lo tipamos.
       const h: HealthRes = await resH.json();
       // Guardamos en estado para que React re-renderice y muestre el resultado.
       setHealth(h);
 
-      
+
       // --- Llamada 2: GET /db/check ---
       const resD = await fetch(`${API_URL}/db/check`);
       if (!resD.ok) throw new Error(`GET /db/check → ${resD.status}`);
