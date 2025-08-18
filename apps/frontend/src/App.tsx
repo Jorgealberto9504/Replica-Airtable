@@ -43,6 +43,7 @@ export default function App() {
       // Guardamos en estado para que React re-renderice y muestre el resultado.
       setHealth(h);
 
+      
       // --- Llamada 2: GET /db/check ---
       const resD = await fetch(`${API_URL}/db/check`);
       if (!resD.ok) throw new Error(`GET /db/check → ${resD.status}`);
