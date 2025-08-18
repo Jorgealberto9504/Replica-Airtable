@@ -1,0 +1,76 @@
+// === Cliente de Prisma (genera tipos y métodos tipados) ===
+generator client {
+  provider = "prisma-client-js"
+}
+
+// === Fuente de datos: Postgres (URL viene de .env) ===
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// === Roles globales (en toda la plataforma) ===
+//USER sera para usuarios normales que podran de igual forma ser creadores, comentadores, editores o viewers de bases
+//SYSADMIN sera para el administrador de la plataforma, que podra crear, editar, eliminar usuarios y ser de igual forma creador
+enum PlatformRole {
+  USER
+  SYSADMIN
+}
+
+// === Roles por Base (membership por base) ===
+//Estos son lo roles que un usuario puede tener en una base específica
+enum BaseRole {
+  ADMIN // Admin de la base, puede crear, editar, eliminar bases y miembros
+  EDITOR // Editor de la base, puede crear, editar y eliminar registros
+  COMMENTER // Comentador de la base, puede comentar registros
+  VIEWER // Viewer de la base, puede ver registros pero no editarlos
+}
+
+// === Usuario (datos básicos + rol global) ===
+//aqui establecemos los datos basicos de un usuario, como su email, nombre completo y contraseña, ademas de su rol en la plataforma como user por defecto
+model User {
+  id           Int           @id @default(autoincrement())
+  email        String        @unique
+  fullName     String
+  passwordHash String
+  createdAt    DateTime      @default(now())
+
+  platformRole PlatformRole  @default(USER) // Rol global en la plataforma, por defecto es USER
+
+  ownedBases   Base[]        @relation("BaseOwner") // Bases que el usuario ha creado
+  baseMembers  BaseMember[]// Memberships en bases donde el usuario es miembro y su rol
+}
+
+
+// === Base (espacio tipo Airtable) ===
+//aqui establecemos los datos de una base, como su nombre, fecha de creacion y el usuario que la creo
+//Ademas de los miembros que tiene, que son los usuarios que tienen acceso a la base  
+model Base {
+  id        Int          @id @default(autoincrement())
+  name      String
+  createdAt DateTime     @default(now())
+
+  ownerId   Int // Usuario que creó la base
+  owner     User         @relation("BaseOwner", fields: [ownerId], references: [id]) // Usuario que creó la base
+
+  members   BaseMember[] // Miembros de la base, que son usuarios con un rol específico
+}
+
+// === Membership (tarjetita: user + base + rol por base) ===
+//aqui establecemos la relacion entre un usuario y una base, ademas de su rol en la base
+//Un usuario puede tener un rol diferente en cada base
+// Un usuario no puede tener dos memberships en la misma base
+// Un usuario puede ser miembro de varias bases
+// Un usuario puede ser owner de una base, lo que le da acceso a todas las funcionalidades
+model BaseMember {
+  id        Int       @id @default(autoincrement()) // ID de la membership
+  baseId    Int // ID de la base a la que pertenece
+  userId    Int // ID del usuario al que pertenece la membership
+  role      BaseRole  @default(VIEWER) // Rol del usuario en la base, por defecto es VIEWER
+  createdAt DateTime  @default(now()) // Fecha de creación de la membership
+
+  base      Base      @relation(fields: [baseId], references: [id], onDelete: Cascade) // Relación con la base, si se elimina la base, se eliminan las memberships asociadas
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade) // Relación con el usuario, si se elimina el usuario, se eliminan las memberships asociadas
+
+  @@unique([baseId, userId]) // un usuario no puede tener 2 tarjetitas en la misma base
+}
