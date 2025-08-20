@@ -13,3 +13,6 @@ export async function hashPassword(plainPassword: string): Promise<string> {
 export async function checkPassword(plainPassword: string, hash: string): Promise<boolean> {
   return bcrypt.compare(plainPassword, hash);
 }
+
+
+
