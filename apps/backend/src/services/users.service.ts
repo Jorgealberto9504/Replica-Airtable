@@ -1,36 +1,13 @@
-// apps/backend/src/services/users.service.ts
 import { prisma } from './db.js';
 import { hashPassword } from './security/password.service.js';
-import { Prisma } from '@prisma/client';
+import { Prisma, PlatformRole } from '@prisma/client';
 
-/**
- * === MODO DEV (usado en /db/write de la tarea 1.3) ===
- * Inserta un usuario de prueba (deja passwordHash='dummy' si no se pasa).
- */
-export async function createUserDev(input: {
+/** Alta de usuario por SYSADMIN con password temporal. */
+export async function createUserAdmin(input: {
   email: string;
   fullName: string;
-  passwordHash?: string;
-}) {
-  const user = await prisma.user.create({
-    data: {
-      email: input.email,
-      fullName: input.fullName,
-      passwordHash: input.passwordHash ?? 'dummy',
-    },
-  });
-  return user;
-}
-
-/**
- * === MODO REAL (para 3.2 /auth/register) ===
- * Hashea la contraseña y crea el usuario.
- * Devuelve SOLO campos públicos (no expone passwordHash).
- */
-export async function createUser(input: {
-  email: string;
-  fullName: string;
-  password: string;
+  password: string;                // temporal
+  platformRole?: PlatformRole;     // 'USER' | 'SYSADMIN'
 }) {
   const passwordHash = await hashPassword(input.password);
 
@@ -39,18 +16,24 @@ export async function createUser(input: {
       email: input.email,
       fullName: input.fullName,
       passwordHash,
+      platformRole: input.platformRole ?? 'USER',
+      isActive: true,               // si tienes este campo en el schema
+      mustChangePassword: true,     // <- clave para forzar cambio en primer login
     },
     select: {
       id: true,
       email: true,
       fullName: true,
-      createdAt: true,
       platformRole: true,
+      mustChangePassword: true,
+      createdAt: true,
     },
   });
 
   return user;
 }
+
+// (dejas tus otras funciones: createUser, findUserByEmail, isUniqueEmailError, etc.)
 
 /**
  * Busca un usuario por email (para validar duplicados antes de crear).

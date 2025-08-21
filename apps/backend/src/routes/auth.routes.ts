@@ -1,10 +1,10 @@
-// apps/backend/src/routes/auth.routes.ts
 import { Router } from 'express';
-import { register } from '../controllers/auth.controller.js';
+import { adminRegister } from '../controllers/auth.controller.js';
+import { requireAuth, requireSysadmin } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 
-// POST /auth/register
-router.post('/register', register);
+/** Registro de usuarios por superusuario (SYSADMIN) */
+router.post('/admin/register', requireAuth, requireSysadmin, adminRegister);
 
 export default router;

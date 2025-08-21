@@ -1,66 +1,78 @@
 // apps/backend/src/controllers/auth.controller.ts
-import { Request, Response } from 'express';
-import { createUser, findUserByEmail, isUniqueEmailError } from '../services/users.service.js';
+import type { Request, Response } from 'express';
+import { createUserAdmin, findUserByEmail, isUniqueEmailError } from '../services/users.service.js';
+import { isStrongPassword, STRONG_PWD_HELP } from '../services/security/password.rules.js';
 
-// --- utilidades simples de validación ---
+// (reutiliza tus helpers de email si ya los tienes definidos en este archivo)
 function isEmailBasic(email: string): boolean {
-  // Regex básico: suficiente para validar forma general
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
-
 function isAllowedDomain(email: string): boolean {
-  const allowed = process.env.ALLOWED_EMAIL_DOMAIN; // ej: "mbq.com"
-  if (!allowed) return true; // si no está configurado, no limitamos por dominio
+  const allowed = process.env.ALLOWED_EMAIL_DOMAIN;
+  if (!allowed) return true;
   const domain = email.split('@')[1]?.toLowerCase();
   return domain === allowed.toLowerCase();
 }
 
 /**
- * POST /auth/register
- * Crea un usuario nuevo (hasheando password).
- * Validaciones: campos requeridos, forma de email, dominio permitido, duplicado.
+ * POST /auth/admin/register
+ * Sólo SYSADMIN: crea usuario con password temporal y obliga a cambiarla en primer login.
+ * body: { email, fullName, tempPassword, platformRole? }
  */
-export async function register(req: Request, res: Response) {
+export async function adminRegister(req: Request, res: Response) {
   try {
-    const { email, fullName, password } = req.body as {
+    const { email, fullName, tempPassword, platformRole } = req.body as {
       email?: string;
       fullName?: string;
-      password?: string;
+      tempPassword?: string;
+      platformRole?: 'USER' | 'SYSADMIN';
     };
 
-    // 1) Requeridos
-    if (!email || !fullName || !password) {
-      return res.status(400).json({ ok: false, error: 'email, fullName y password son requeridos' });
+    // Requeridos
+    if (!email || !fullName || !tempPassword) {
+      return res.status(400).json({ ok: false, error: 'email, fullName y tempPassword son requeridos' });
     }
 
-    // 2) Forma de email
+    // Email válido + dominio permitido
     if (!isEmailBasic(email)) {
       return res.status(400).json({ ok: false, error: 'Email inválido' });
     }
-
-    // 3) Dominio permitido
     if (!isAllowedDomain(email)) {
       return res.status(403).json({ ok: false, error: 'Dominio de email no permitido' });
     }
 
-    // 4) Chequeo previo de duplicado (opcional, además de manejar P2002 abajo)
+    // Fuerza de contraseña temporal
+    if (!isStrongPassword(tempPassword)) {
+      return res.status(400).json({ ok: false, error: STRONG_PWD_HELP });
+    }
+
+    // Duplicado
     const exists = await findUserByEmail(email);
     if (exists) {
       return res.status(409).json({ ok: false, error: 'Email ya registrado' });
     }
 
-    // 5) Crear usuario (hashea password internamente)
-    const user = await createUser({ email, fullName, password });
+    // Crear usuario (mustChangePassword=true)
+    const user = await createUserAdmin({
+      email,
+      fullName,
+      password: tempPassword,
+      platformRole: platformRole ?? 'USER',
+    });
 
     return res.status(201).json({ ok: true, user });
   } catch (e) {
     if (isUniqueEmailError(e)) {
       return res.status(409).json({ ok: false, error: 'Email ya registrado' });
     }
-    console.error('[register] error:', e);
+    console.error('[adminRegister] error:', e);
     return res.status(500).json({ ok: false, error: 'Error al registrar usuario' });
   }
 }
+
+
+
+
 
 
 

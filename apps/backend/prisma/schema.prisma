@@ -35,10 +35,17 @@ model User {
   passwordHash String
   createdAt    DateTime      @default(now())
 
+
+ // NUEVO
+  isActive           Boolean   @default(true)
+  mustChangePassword Boolean   @default(true)
+  passwordUpdatedAt  DateTime? // se setea cuando el usuario cambia password
+
   platformRole PlatformRole  @default(USER) // Rol global en la plataforma, por defecto es USER
 
   ownedBases   Base[]        @relation("BaseOwner") // Bases que el usuario ha creado
   baseMembers  BaseMember[]// Memberships en bases donde el usuario es miembro y su rol
+
 }
 
 
