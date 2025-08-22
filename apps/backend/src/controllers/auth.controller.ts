@@ -1,18 +1,154 @@
 // apps/backend/src/controllers/auth.controller.ts
 import type { Request, Response } from 'express';
-import { createUserAdmin, findUserByEmail, isUniqueEmailError } from '../services/users.service.js';
-import { isStrongPassword, STRONG_PWD_HELP } from '../services/security/password.rules.js';
 
-// (reutiliza tus helpers de email si ya los tienes definidos en este archivo)
+// --- servicios/DB/utilidades ---
+import { prisma } from '../services/db.js';
+import {createUserAdmin,findUserByEmail,isUniqueEmailError} from '../services/users.service.js';
+import { checkPassword } from '../services/security/password.service.js';
+import { signJwt } from '../services/security/jwt.service.js';
+import { getAuthUser } from '../middlewares/auth.middleware.js';
+
+// === Config de cookies/JWT ===
+const COOKIE_NAME = process.env.COOKIE_NAME ?? 'session';
+
+// === Helpers locales de validación de email (como ya los traías) ===
 function isEmailBasic(email: string): boolean {
+  // Regex básico: valida forma general del correo
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
+
 function isAllowedDomain(email: string): boolean {
+  // Si configuras ALLOWED_EMAIL_DOMAIN=mbqinc.com sólo acepta ese dominio
   const allowed = process.env.ALLOWED_EMAIL_DOMAIN;
-  if (!allowed) return true;
+  if (!allowed) return true; // si no está definido, no filtramos por dominio
   const domain = email.split('@')[1]?.toLowerCase();
   return domain === allowed.toLowerCase();
 }
+
+// === Reglas de contraseña fuerte (las que acordamos con Sofía) ===
+import { isStrongPassword, STRONG_PWD_HELP } from '../services/security/password.rules.js';
+
+/* ------------------------------------------------------------------------------------------------
+ *  LOGIN / LOGOUT / ME
+ *  - login: verifica credenciales, firma JWT y lo guarda en cookie HttpOnly
+ *  - logout: borra cookie
+ *  - me: devuelve el usuario autenticado (usa middleware requireAuth)
+ * ----------------------------------------------------------------------------------------------*/
+
+/** Helper: trae datos mínimos para login (incluye hash) */
+// auth.controller.ts
+async function getUserForLogin(emailRaw: string) {
+  const email = emailRaw.trim().toLowerCase();   // ← normaliza
+  return prisma.user.findUnique({
+    where: { email },
+    select: {
+      id: true,
+      email: true, 
+      fullName: true,
+      passwordHash: true, 
+      platformRole: true,
+      isActive: true, 
+      mustChangePassword: true,
+    },
+  });
+}
+
+/**
+ * POST /auth/login
+ * Body: { email, password }
+ * - Verifica credenciales
+ * - Firma JWT y lo guarda en cookie HttpOnly
+ * - Devuelve datos públicos del usuario
+ */
+export async function login(req: Request, res: Response) {
+  const { email, password } = req.body as { email?: string; password?: string };
+
+  // 1) Requeridos
+  if (!email || !password) {
+    return res.status(400).json({ ok: false, error: 'email y password son requeridos' });
+  }
+
+  // 2) Usuario existe
+  const user = await getUserForLogin(email);
+  if (!user) {
+    return res.status(401).json({ ok: false, error: 'Credenciales inválidas' });
+  }
+
+  // 3) Activo
+  if (!user.isActive) {
+    return res.status(403).json({ ok: false, error: 'Cuenta desactivada' });
+  }
+
+  // 4) Password correcta
+  const okPass = await checkPassword(password, user.passwordHash);
+  if (!okPass) {
+    return res.status(401).json({ ok: false, error: 'Credenciales inválidas' });
+  }
+
+  // 5) Firmar JWT (sub = id del user)
+  const token = signJwt({
+    sub: String(user.id),
+    email: user.email,
+    role: user.platformRole,
+  });
+
+  // 6) Guardar JWT en cookie HttpOnly
+  const inProd = process.env.NODE_ENV === 'production';
+  const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 días
+
+  res.cookie(COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: inProd,
+    sameSite: 'lax',
+    maxAge: MAX_AGE_MS,
+    path: '/', // importante para que clearCookie funcione en logout
+  });
+
+  // 7) Devolver user público
+  return res.json({
+    ok: true,
+    user: {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      platformRole: user.platformRole,
+      mustChangePassword: user.mustChangePassword,
+    },
+  });
+}
+
+/**
+ * POST /auth/logout
+ * - Borra la cookie del JWT
+ */
+export async function logout(_req: Request, res: Response) {
+  const inProd = process.env.NODE_ENV === 'production';
+  res.clearCookie(COOKIE_NAME, {
+    httpOnly: true,
+    secure: inProd,
+    sameSite: 'lax',
+    path: '/',
+  });
+  return res.json({ ok: true });
+}
+
+/**
+ * GET /auth/me
+ * - Requiere requireAuth
+ * - Devuelve el usuario pegado por el middleware
+ */
+export async function me(req: Request, res: Response) {
+  const user = getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ ok: false, error: 'No autenticado' });
+  }
+  return res.json({ ok: true, user });
+}
+
+/* ------------------------------------------------------------------------------------------------
+ *  REGISTRO ADMIN (como ya lo tenías)
+ *  Sólo SYSADMIN: crea usuario con password temporal y obliga a cambiarla
+ * ----------------------------------------------------------------------------------------------*/
 
 /**
  * POST /auth/admin/register
@@ -52,7 +188,7 @@ export async function adminRegister(req: Request, res: Response) {
       return res.status(409).json({ ok: false, error: 'Email ya registrado' });
     }
 
-    // Crear usuario (mustChangePassword=true)
+    // Crear usuario (mustChangePassword=true internamente en createUserAdmin)
     const user = await createUserAdmin({
       email,
       fullName,

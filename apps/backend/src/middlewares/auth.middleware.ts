@@ -1,30 +1,68 @@
 // apps/backend/src/middlewares/auth.middleware.ts
 import type { Request, Response, NextFunction } from 'express';
-import { verifyJwt, type JwtPayload } from '../services/security/jwt.service.js';
+import { prisma } from '../services/db.js';
+import { verifyJwt } from '../services/security/jwt.service.js';
 
+// Nombre de la cookie donde guardamos el JWT (viene de .env)
 const COOKIE_NAME = process.env.COOKIE_NAME ?? 'session';
 
-export type AuthRequest = Request & { user?: JwtPayload };
-
-/** Lee el JWT de la cookie y rellena req.user si es válido. */
-export function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
-  const token = req.cookies?.[COOKIE_NAME];
-  if (!token) return res.status(401).json({ ok: false, error: 'No autenticado' });
-
+// 1) Verifica que el usuario esté autenticado (JWT válido en la cookie)
+export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   try {
-    const payload = verifyJwt<JwtPayload>(token);
-    req.user = payload; // { sub, email?, role? }
-    return next();
+    // a) Leer la cookie
+    const token = req.cookies?.[COOKIE_NAME];
+    if (!token) {
+      return res.status(401).json({ ok: false, error: 'No autenticado (sin cookie)' });
+    }
+
+    // b) Validar y decodificar el JWT
+    const payload = verifyJwt<{ sub: string }>(token); // sub = id del usuario en string
+    const userId = Number(payload.sub);
+    if (!userId) {
+      return res.status(401).json({ ok: false, error: 'Token inválido' });
+    }
+
+    // c) Cargar el usuario desde la base (para revisar que exista y esté activo)
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        platformRole: true,   // 'USER' | 'SYSADMIN'
+        isActive: true,       // por si quieres desactivar cuentas
+        mustChangePassword: true, // para el flujo de “cambiar contraseña”
+      },
+    });
+
+    if (!user || !user.isActive) {
+      return res.status(401).json({ ok: false, error: 'No autorizado' });
+    }
+
+    // d) Guardar el usuario en la request para que otros lo usen
+    (req as any).user = user;
+
+    // e) Pasar al siguiente middleware/controlador
+    next();
   } catch {
     return res.status(401).json({ ok: false, error: 'Token inválido' });
   }
 }
 
-/** Exige que el usuario autenticado sea SYSADMIN. */
-export function requireSysadmin(req: AuthRequest, res: Response, next: NextFunction) {
-  if (!req.user) return res.status(401).json({ ok: false, error: 'No autenticado' });
-  if (req.user.role !== 'SYSADMIN') {
-    return res.status(403).json({ ok: false, error: 'Requiere rol SYSADMIN' });
+// 2) Verifica que el usuario autenticado sea SYSADMIN
+export function requireSuperadmin(req: Request, res: Response, next: NextFunction) {
+  const user = (req as any).user; // lo puso requireAuth
+  if (!user) return res.status(401).json({ ok: false, error: 'No autenticado' });
+
+  if (user.platformRole !== 'SYSADMIN') {
+    return res.status(403).json({ ok: false, error: 'Solo superusuario' });
   }
-  return next();
+
+  next();
+}
+
+// 3) Helper para leer el usuario desde la request en tus controladores
+export function getAuthUser<
+  T = { id: number; email: string; platformRole: string; mustChangePassword: boolean }
+>(req: Request): T | undefined {
+  return (req as any).user as T | undefined;
 }

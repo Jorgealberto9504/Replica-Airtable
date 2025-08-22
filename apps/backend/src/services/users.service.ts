@@ -1,53 +1,74 @@
+// apps/backend/src/services/users.service.ts
 import { prisma } from './db.js';
 import { hashPassword } from './security/password.service.js';
-import { Prisma, PlatformRole } from '@prisma/client';
+import { Prisma, type PlatformRole } from '@prisma/client';
+
+type UserPublic = {
+  id: number;
+  email: string;
+  fullName: string;
+  createdAt: Date;
+  platformRole: PlatformRole;
+  mustChangePassword: boolean;
+};
 
 /** Alta de usuario por SYSADMIN con password temporal. */
 export async function createUserAdmin(input: {
   email: string;
   fullName: string;
-  password: string;                // temporal
-  platformRole?: PlatformRole;     // 'USER' | 'SYSADMIN'
-}) {
+  password: string;            // temporal
+  platformRole?: PlatformRole; // 'USER' | 'SYSADMIN'
+}): Promise<UserPublic> {
+  const email = input.email.trim().toLowerCase();
   const passwordHash = await hashPassword(input.password);
 
-  const user = await prisma.user.create({
+  return prisma.user.create({
     data: {
-      email: input.email,
+      email,
       fullName: input.fullName,
       passwordHash,
       platformRole: input.platformRole ?? 'USER',
-      isActive: true,               // si tienes este campo en el schema
-      mustChangePassword: true,     // <- clave para forzar cambio en primer login
+      isActive: true,
+      mustChangePassword: true,
     },
     select: {
       id: true,
       email: true,
       fullName: true,
+      createdAt: true,
       platformRole: true,
       mustChangePassword: true,
-      createdAt: true,
     },
   });
-
-  return user;
 }
 
-// (dejas tus otras funciones: createUser, findUserByEmail, isUniqueEmailError, etc.)
-
-/**
- * Busca un usuario por email (para validar duplicados antes de crear).
- */
-export async function findUserByEmail(email: string) {
+/** Busca un usuario por email (normalizado) para validar duplicados. */
+export async function findUserByEmail(emailRaw: string) {
+  const email = emailRaw.trim().toLowerCase();
   return prisma.user.findUnique({
     where: { email },
-    select: { id: true, email: true }, 
+    select: { id: true, email: true },
   });
 }
 
+/** Datos mínimos para login (incluye hash). */
+export async function getUserForLogin(emailRaw: string) {
+  const email = emailRaw.trim().toLowerCase();
+  return prisma.user.findUnique({
+    where: { email },
+    select: {
+      id: true,
+      email: true,
+      fullName: true,
+      passwordHash: true,
+      platformRole: true,
+      isActive: true,
+      mustChangePassword: true,
+    },
+  });
+}
 
- // Helper para detectar el error de Prisma por email único.
- 
+/** Detecta error de constraint única (email) en Prisma. */
 export function isUniqueEmailError(e: unknown): boolean {
   return e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
 }
