@@ -10,7 +10,14 @@ import authRouter from './routes/auth.routes.js'; // <-- NUEVO
 const app = express();
 
 // middlewares base
-app.use(cors({ origin: 'http://localhost:5173', credentials: true }));
+const WEB_URL = process.env.WEB_URL ?? 'http://localhost:5173';
+
+app.use(
+  cors({
+    origin: WEB_URL,     // <- NADA de '*'
+    credentials: true,   // <- permite cookies
+  })
+);
 app.use(express.json());
 app.use(cookieParser()); // <-- ya lo dejamos listo para 3.3 (login/cookies)
 
