@@ -1,182 +1,94 @@
+// apps/frontend/src/pages/Login.tsx
 import { useState } from 'react';
-import {
-  login as apiLogin,
-  me as apiMe,
-  logout as apiLogout,
-  adminRegister as apiAdminRegister,
-  type Me,
-  type Role,
-} from '../api/auth';
+import { useNavigate } from 'react-router-dom';
+import { postJSON } from '../api/http';
+import logo from '../assets/mbq-logo.png';
+
+type LoginResp = {
+  ok: boolean;
+  user?: {
+    id: number;
+    email: string;
+    fullName: string;
+    platformRole: 'USER' | 'SYSADMIN';
+    mustChangePassword: boolean;
+  };
+};
 
 export default function Login() {
-  // --- login ---
+  const nav = useNavigate();
+
+  // estado del formulario y UI
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [msg, setMsg] = useState('');
-  const [me, setMe] = useState<Me | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  // --- registro admin ---
-  const [newFullName, setNewFullName] = useState('');
-  const [newEmail, setNewEmail] = useState('');
-  const [newTempPwd, setNewTempPwd] = useState('');
-  const [newRole, setNewRole] = useState<Role>('USER');
-
-  async function onLogin(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setMsg('');
+    setErr(null);
+    setLoading(true);
     try {
-      const res = await apiLogin(email, password); // { ok, user }
-      setMsg(`Bienvenido ${res.user.fullName} (${res.user.platformRole})`);
-
-      // refrescar "me"
-      const m = await apiMe(); // { ok, user }
-      setMe(m.user);
-    } catch (err: any) {
-      setMsg(err?.message ?? 'Error al iniciar sesión');
-    }
-  }
-
-  async function onCheckMe() {
-    setMsg('');
-    setMe(null);
-    try {
-      const m = await apiMe();
-      setMe(m.user);
-    } catch (err: any) {
-      setMsg(err?.message ?? 'Sesión no válida');
-    }
-  }
-
-  async function onLogout() {
-    setMsg('');
-    setMe(null);
-    try {
-      await apiLogout();
-      setMsg('Sesión cerrada');
-    } catch (err: any) {
-      setMsg(err?.message ?? 'Error al cerrar sesión');
-    }
-  }
-
-  async function onAdminRegister(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setMsg('');
-    try {
-      const res = await apiAdminRegister({
-        fullName: newFullName,
-        email: newEmail,
-        tempPassword: newTempPwd,
-        platformRole: newRole,
+      // nota: si tu backend guarda emails con el mismo casing que registraste,
+      // deja `email` tal cual. Si decides normalizar, usa: const emailToSend = email.trim().toLowerCase();
+      const resp = await postJSON<LoginResp>('/auth/login', {
+        email: email.trim(),
+        password: password.trim(),
       });
-      setMsg(`Creado: ${res.user.fullName} (${res.user.email})`);
-      setNewFullName('');
-      setNewEmail('');
-      setNewTempPwd('');
-      setNewRole('USER');
-    } catch (err: any) {
-      setMsg(err?.message ?? 'Error al crear usuario');
+
+      if (resp.ok) {
+        // si en el futuro necesitas forzar cambio de contraseña:
+        // if (resp.user?.mustChangePassword) return nav('/change-password', { replace: true });
+        nav('/dashboard', { replace: true });
+        return;
+      }
+      setErr('Credenciales inválidas');
+    } catch (e: any) {
+      setErr(e?.message ?? 'Error de conexión');
+    } finally {
+      setLoading(false);
     }
   }
 
   return (
-    // ⬇️ Contenedor que centra en ambos ejes
-    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24 }}>
-      {/* ⬇️ Tarjeta del formulario */}
-      <div
-        style={{
-          width: 420,
-          maxWidth: '92vw',
-          fontFamily: 'system-ui, Arial',
-          background: '#1f1f1f',
-          border: '1px solid #333',
-          borderRadius: 12,
-          padding: 20,
-          boxShadow: '0 8px 30px rgba(0,0,0,.25)',
-          color: '#fff',
-        }}
-      >
-        <h2 style={{ marginTop: 0 }}>Login</h2>
+    <div className="login-page">
+      {/* Marca de agua a pantalla completa */}
+      <div className="login-bg" style={{ backgroundImage: `url(${logo})` }} aria-hidden="true" />
 
-        <form onSubmit={onLogin} style={{ display: 'grid', gap: 8 }}>
+      <div className="card login-card">
+        <h1 className="title" style={{ textAlign: 'center' }}>Iniciar sesión</h1>
+
+        {err && <div className="alert error" role="alert">{err}</div>}
+
+        <form onSubmit={handleSubmit} className="form" style={{ display: 'grid', gap: 12 }}>
+          <label className="label" htmlFor="email">Email</label>
           <input
+            id="email"
+            className="input"
             type="email"
-            placeholder="Email"
             value={email}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
+            onChange={e => setEmail(e.target.value)}
+            placeholder="tucorreo@mbqinc.com"
+            autoComplete="username"
+            required
           />
+
+          <label className="label" htmlFor="password">Contraseña</label>
           <input
+            id="password"
+            className="input"
             type="password"
-            placeholder="Password"
             value={password}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="••••••••"
+            autoComplete="current-password"
+            required
           />
-          <button type="submit">Entrar</button>
+
+          <button className="btn primary" type="submit" disabled={loading}>
+            {loading ? 'Entrando…' : 'Entrar'}
+          </button>
         </form>
-
-        <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-          <button onClick={onCheckMe}>/auth/me</button>
-          <button onClick={onLogout}>Logout</button>
-        </div>
-
-        {msg && (
-          <p style={{ marginTop: 12 }}>
-            <b>Mensaje:</b> {msg}
-          </p>
-        )}
-
-        {me && (
-          <div style={{ marginTop: 12 }}>
-            <pre style={{ background: '#111', padding: 12, borderRadius: 6 }}>
-              {JSON.stringify(me, null, 2)}
-            </pre>
-          </div>
-        )}
-
-        {me?.platformRole === 'SYSADMIN' && (
-          <div style={{ borderTop: '1px solid #333', marginTop: 24, paddingTop: 16 }}>
-            <h3>Admin: registrar usuario</h3>
-
-            <form onSubmit={onAdminRegister} style={{ display: 'grid', gap: 8 }}>
-              <input
-                type="text"
-                placeholder="Nombre completo"
-                value={newFullName}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setNewFullName(e.target.value)
-                }
-              />
-              <input
-                type="email"
-                placeholder="Correo (dominio permitido)"
-                value={newEmail}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEmail(e.target.value)}
-              />
-              <input
-                type="text"
-                placeholder="Password temporal (fuerte)"
-                value={newTempPwd}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewTempPwd(e.target.value)}
-              />
-
-              <select
-                value={newRole}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                  setNewRole(e.target.value as Role)
-                }
-              >
-                <option value="USER">USER</option>
-                <option value="SYSADMIN">SYSADMIN</option>
-              </select>
-
-              <button type="submit">Crear usuario</button>
-
-              <small>
-                Reglas: al menos 8 caracteres, 1 mayúscula, 1 minúscula, 1 número y 1 carácter
-                especial.
-              </small>
-            </form>
-          </div>
-        )}
       </div>
     </div>
   );

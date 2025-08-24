@@ -66,3 +66,29 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+:root{
+  /* Ajusta aquí los tamaños globales del logo */
+  --logo-bg-size: clamp(800px, 80vw, 1400px); /* login (fondo) */
+  --logo-nav-size: 56px;                      /* navbar */
+}
+
+/* Navbar */
+.brand-logo{
+  height: var(--logo-nav-size);
+  width: auto;
+}
+
+/* Login (marca de agua) */
+.login-bg{
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: var(--logo-bg-size);
+  height: auto;
+  opacity: 0.01;           /* súbelo/bájalo si quieres más/menos visible */
+  pointer-events: none;
+  user-select: none;
+  filter: saturate(0) contrast(1.05);
+}
+

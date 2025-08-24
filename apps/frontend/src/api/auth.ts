@@ -1,36 +1,30 @@
 // apps/frontend/src/api/auth.ts
 import { getJSON, postJSON } from './http';
 
-export type Role = 'USER' | 'SYSADMIN';
-
-export type Me = {
-  id: number;
-  email: string;
-  fullName: string;
-  platformRole: Role;
-  mustChangePassword?: boolean;
+export type MeResp = {
+  ok: boolean;
+  user?: {
+    id: number;
+    email: string;
+    fullName: string;
+    platformRole: 'USER' | 'SYSADMIN';
+    mustChangePassword: boolean;
+  };
 };
 
-export function login(email: string, password: string) {
-  return postJSON<{ ok: true; user: Me }>('/auth/login', { email, password });
+export function fetchMe() {
+  return getJSON<MeResp>('/auth/me');
 }
 
-export function me() {
-  return getJSON<{ ok: boolean; user: Me }>('/auth/me');
-}
-
-export function logout() {
+export function doLogout() {
   return postJSON<{ ok: boolean }>('/auth/logout', {});
 }
 
-export function adminRegister(body: {
-  fullName: string;
+export function adminRegisterUser(input: {
   email: string;
+  fullName: string;
   tempPassword: string;
-  platformRole: Role;
+  platformRole?: 'USER' | 'SYSADMIN';
 }) {
-  return postJSON<{ ok: true; user: { id: number; email: string; fullName: string } }>(
-    '/auth/admin/register',
-    body
-  );
+  return postJSON<{ ok: boolean; user?: any }>('/auth/admin/register', input);
 }

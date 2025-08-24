@@ -1,10 +1,7 @@
 // apps/frontend/src/App.tsx
-import Login from './pages/Login';
+import AppRouter from './router';
+import './styles/global.css';
 
 export default function App() {
-  return (
-    <main style={{ maxWidth: 720, margin: '40px auto', padding: 16 }}>
-      <Login />
-    </main>
-  );
+  return <AppRouter />;
 }

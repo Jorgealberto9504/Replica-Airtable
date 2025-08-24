@@ -12,12 +12,11 @@ const app = express();
 // middlewares base
 const WEB_URL = process.env.WEB_URL ?? 'http://localhost:5173';
 
-app.use(
-  cors({
-    origin: WEB_URL,     // <- NADA de '*'
-    credentials: true,   // <- permite cookies
-  })
-);
+const FRONTEND = process.env.FRONTEND_ORIGIN ?? 'http://localhost:5173';
+app.use(cors({
+  origin: FRONTEND,
+  credentials: true,
+}));
 app.use(express.json());
 app.use(cookieParser()); // <-- ya lo dejamos listo para 3.3 (login/cookies)
 
