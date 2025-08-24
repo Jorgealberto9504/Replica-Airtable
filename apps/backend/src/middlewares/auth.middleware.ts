@@ -28,9 +28,10 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       select: {
         id: true,
         email: true,
-        platformRole: true,   // 'USER' | 'SYSADMIN'
-        isActive: true,       // por si quieres desactivar cuentas
-        mustChangePassword: true, // para el flujo de “cambiar contraseña”
+        platformRole: true,      // 'USER' | 'SYSADMIN'
+        isActive: true,          // para desactivar cuentas
+        mustChangePassword: true,// para “cambiar contraseña”
+        canCreateBases: true,    // <-- NUEVO: permiso global de creador de bases
       },
     });
 
@@ -60,9 +61,29 @@ export function requireSuperadmin(req: Request, res: Response, next: NextFunctio
   next();
 }
 
+// 2.1) Verifica que el usuario pueda crear bases (SYSADMIN o canCreateBases=true)
+export function requireBaseCreator(req: Request, res: Response, next: NextFunction) {
+  const user = (req as any).user as
+    | { platformRole: 'USER' | 'SYSADMIN'; canCreateBases: boolean }
+    | undefined;
+
+  if (!user) return res.status(401).json({ ok: false, error: 'No autenticado' });
+
+  if (user.platformRole === 'SYSADMIN' || user.canCreateBases) {
+    return next();
+  }
+  return res.status(403).json({ ok: false, error: 'No puedes crear bases' });
+}
+
 // 3) Helper para leer el usuario desde la request en tus controladores
 export function getAuthUser<
-  T = { id: number; email: string; platformRole: string; mustChangePassword: boolean }
+  T = {
+    id: number;
+    email: string;
+    platformRole: 'USER' | 'SYSADMIN';
+    mustChangePassword: boolean;
+    canCreateBases: boolean;
+  }
 >(req: Request): T | undefined {
   return (req as any).user as T | undefined;
 }

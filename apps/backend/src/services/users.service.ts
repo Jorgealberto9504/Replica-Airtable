@@ -3,13 +3,14 @@ import { prisma } from './db.js';
 import { hashPassword } from './security/password.service.js';
 import { Prisma, type PlatformRole } from '@prisma/client';
 
-type UserPublic = {
+export type UserPublic = {
   id: number;
   email: string;
   fullName: string;
   createdAt: Date;
   platformRole: PlatformRole;
   mustChangePassword: boolean;
+  canCreateBases: boolean; // <-- NUEVO en la forma pública
 };
 
 /** Alta de usuario por SYSADMIN con password temporal. */
@@ -18,6 +19,7 @@ export async function createUserAdmin(input: {
   fullName: string;
   password: string;            // temporal
   platformRole?: PlatformRole; // 'USER' | 'SYSADMIN'
+  canCreateBases?: boolean;    // <-- NUEVO
 }): Promise<UserPublic> {
   const email = input.email.trim().toLowerCase();
   const passwordHash = await hashPassword(input.password);
@@ -30,6 +32,7 @@ export async function createUserAdmin(input: {
       platformRole: input.platformRole ?? 'USER',
       isActive: true,
       mustChangePassword: true,
+      canCreateBases: !!input.canCreateBases, // <-- aplica el flag
     },
     select: {
       id: true,
@@ -38,6 +41,39 @@ export async function createUserAdmin(input: {
       createdAt: true,
       platformRole: true,
       mustChangePassword: true,
+      canCreateBases: true, // <-- devolver en respuesta pública
+    },
+  });
+}
+
+/** Lista de usuarios (para pantalla de administración). */
+export async function listUsers() {
+  return prisma.user.findMany({
+    orderBy: { id: 'asc' },
+    select: {
+      id: true,
+      email: true,
+      fullName: true,
+      platformRole: true,
+      canCreateBases: true,
+      isActive: true,
+      createdAt: true,
+    },
+  });
+}
+
+/** Otorga o quita el permiso global de "crear bases" a un usuario. */
+export async function setUserCanCreateBases(userId: number, can: boolean) {
+  return prisma.user.update({
+    where: { id: userId },
+    data: { canCreateBases: can },
+    select: {
+      id: true,
+      email: true,
+      fullName: true,
+      platformRole: true,
+      canCreateBases: true,
+      isActive: true,
     },
   });
 }
@@ -64,6 +100,7 @@ export async function getUserForLogin(emailRaw: string) {
       platformRole: true,
       isActive: true,
       mustChangePassword: true,
+      canCreateBases: true, // opcional, por si lo quieres en frontend tras login
     },
   });
 }
