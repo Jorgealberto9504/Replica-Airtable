@@ -24,7 +24,8 @@ export type MeResp = {
     email: string;                        // email normalizado
     fullName: string;                     // nombre completo
     platformRole: 'USER' | 'SYSADMIN';    // rol global en la plataforma
-    mustChangePassword: boolean;          // si debe cambiar password en primer login
+    mustChangePassword: boolean;  // si debe cambiar password en primer login
+    canCreateBases?: boolean;        
   };
 };
 
@@ -55,6 +56,8 @@ export function adminRegisterUser(input: {
   fullName: string;
   tempPassword: string;
   platformRole?: 'USER' | 'SYSADMIN';
+  canCreateBases?: boolean;            // <- NUEVO
+
 }) {
   // Nota: aquí usamos `any` para el tipo de `user` de respuesta por simplicidad.
   // Si quieres tiparlo bien, crea y usa un tipo `UserPublic` reutilizable.

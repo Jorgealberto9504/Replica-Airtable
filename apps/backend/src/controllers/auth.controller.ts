@@ -3,7 +3,11 @@ import type { Request, Response } from 'express';
 
 // --- servicios/DB/utilidades ---
 import { prisma } from '../services/db.js';
-import {createUserAdmin,findUserByEmail,isUniqueEmailError} from '../services/users.service.js';
+import {
+  createUserAdmin,
+  findUserByEmail,
+  isUniqueEmailError,
+} from '../services/users.service.js';
 import { checkPassword } from '../services/security/password.service.js';
 import { signJwt } from '../services/security/jwt.service.js';
 import { getAuthUser } from '../middlewares/auth.middleware.js';
@@ -36,19 +40,19 @@ import { isStrongPassword, STRONG_PWD_HELP } from '../services/security/password
  * ----------------------------------------------------------------------------------------------*/
 
 /** Helper: trae datos mínimos para login (incluye hash) */
-// auth.controller.ts
 async function getUserForLogin(emailRaw: string) {
   const email = emailRaw.trim().toLowerCase();   // ← normaliza
   return prisma.user.findUnique({
     where: { email },
     select: {
       id: true,
-      email: true, 
+      email: true,
       fullName: true,
-      passwordHash: true, 
+      passwordHash: true,
       platformRole: true,
-      isActive: true, 
+      isActive: true,
       mustChangePassword: true,
+      canCreateBases: true, // ← lo exponemos también en login (útil en frontend)
     },
   });
 }
@@ -113,6 +117,7 @@ export async function login(req: Request, res: Response) {
       fullName: user.fullName,
       platformRole: user.platformRole,
       mustChangePassword: user.mustChangePassword,
+      canCreateBases: user.canCreateBases, // ← ahora viene también aquí
     },
   });
 }
@@ -146,22 +151,23 @@ export async function me(req: Request, res: Response) {
 }
 
 /* ------------------------------------------------------------------------------------------------
- *  REGISTRO ADMIN (como ya lo tenías)
+ *  REGISTRO ADMIN (como ya lo tenías, ahora con canCreateBases opcional)
  *  Sólo SYSADMIN: crea usuario con password temporal y obliga a cambiarla
  * ----------------------------------------------------------------------------------------------*/
 
 /**
  * POST /auth/admin/register
  * Sólo SYSADMIN: crea usuario con password temporal y obliga a cambiarla en primer login.
- * body: { email, fullName, tempPassword, platformRole? }
+ * body: { email, fullName, tempPassword, platformRole?, canCreateBases? }
  */
 export async function adminRegister(req: Request, res: Response) {
   try {
-    const { email, fullName, tempPassword, platformRole } = req.body as {
+    const { email, fullName, tempPassword, platformRole, canCreateBases } = req.body as {
       email?: string;
       fullName?: string;
       tempPassword?: string;
       platformRole?: 'USER' | 'SYSADMIN';
+      canCreateBases?: boolean; // ← NUEVO
     };
 
     // Requeridos
@@ -194,6 +200,7 @@ export async function adminRegister(req: Request, res: Response) {
       fullName,
       password: tempPassword,
       platformRole: platformRole ?? 'USER',
+      canCreateBases: !!canCreateBases, // ← pasa el flag al service
     });
 
     return res.status(201).json({ ok: true, user });
@@ -205,66 +212,3 @@ export async function adminRegister(req: Request, res: Response) {
     return res.status(500).json({ ok: false, error: 'Error al registrar usuario' });
   }
 }
-
-
-
-
-
-
-
-/* Pruebas
-
-falta de campos
-
-{
-"email":"Jorge@gmail.com",
-"fullName":"",
-"password":"1231456"
-}
-
-{"ok":false,"error":"email, fullName y password son requeridos"}
-
-
-
-
-email invalido
-
-{
-"email":"Jorgembqinc.com",
-"fullName":"Jorge Escalante",
-"password":"1231456"
-}
-
-{"ok":false,"error":"Email inválido"}
-
-
-
-Dominio no permitido
-
-{
-"email":"Jorge@gmail.com",
-"fullName":"Jorge Escalante",
-"password":"1231456"
-}
-
-
-Caso de éxito
-{
-"email":"Jorge@mbqinc.com",
-"fullName":"Jorge Escalante",
-"password":"1231456"
-}
-{ "ok": true, "user": { "id": 1, "email": "pepe@mbqinc.com", "fullName": "Pepe Pérez", "createdAt": "...", "platformRole": "USER" } }.  sin passwordHJash
-
-
-
-// Duplicado (con el mismo email)
-
-{
-"email":"Jorge@mbqinc.com",
-"fullName":"Jorge Escalante",
-"password":"1231456"
-}
-
-{"ok":false,"error":"Email ya registrado"}
-*/
