@@ -11,8 +11,6 @@ import usersRouter from './routes/users.routes.js'; // <-- NUEVO
 
 const app = express();
 
-// middlewares base
-const WEB_URL = process.env.WEB_URL ?? 'http://localhost:5173';
 
 const FRONTEND = process.env.FRONTEND_ORIGIN ?? 'http://localhost:5173';
 app.use(cors({

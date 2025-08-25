@@ -3,6 +3,7 @@ import { prisma } from './db.js';
 import { hashPassword } from './security/password.service.js';
 import { Prisma, type PlatformRole } from '@prisma/client';
 
+/** Forma “pública” base de un usuario que solemos exponer al frontend */
 export type UserPublic = {
   id: number;
   email: string;
@@ -10,7 +11,19 @@ export type UserPublic = {
   createdAt: Date;
   platformRole: PlatformRole;
   mustChangePassword: boolean;
-  canCreateBases: boolean; // <-- NUEVO en la forma pública
+  canCreateBases: boolean;
+};
+
+/** Tipo para el listado de administración (incluye isActive por conveniencia) */
+export type UserAdminList = {
+  id: number;
+  email: string;
+  fullName: string;
+  platformRole: PlatformRole;
+  canCreateBases: boolean;
+  isActive: boolean;
+  mustChangePassword: boolean;
+  createdAt: Date;
 };
 
 /** Alta de usuario por SYSADMIN con password temporal. */
@@ -19,7 +32,7 @@ export async function createUserAdmin(input: {
   fullName: string;
   password: string;            // temporal
   platformRole?: PlatformRole; // 'USER' | 'SYSADMIN'
-  canCreateBases?: boolean;    // <-- NUEVO
+  canCreateBases?: boolean;    // <-- permite marcar si será “creador global”
 }): Promise<UserPublic> {
   const email = input.email.trim().toLowerCase();
   const passwordHash = await hashPassword(input.password);
@@ -31,8 +44,8 @@ export async function createUserAdmin(input: {
       passwordHash,
       platformRole: input.platformRole ?? 'USER',
       isActive: true,
-      mustChangePassword: true,
-      canCreateBases: !!input.canCreateBases, // <-- aplica el flag
+      mustChangePassword: true,           // forzará cambio en primer login (si lo implementas)
+      canCreateBases: !!input.canCreateBases, // aplica el flag si viene marcado
     },
     select: {
       id: true,
@@ -41,13 +54,13 @@ export async function createUserAdmin(input: {
       createdAt: true,
       platformRole: true,
       mustChangePassword: true,
-      canCreateBases: true, // <-- devolver en respuesta pública
+      canCreateBases: true,
     },
   });
 }
 
 /** Lista de usuarios (para pantalla de administración). */
-export async function listUsers() {
+export async function listUsers(): Promise<UserAdminList[]> {
   return prisma.user.findMany({
     orderBy: { id: 'asc' },
     select: {
@@ -57,13 +70,14 @@ export async function listUsers() {
       platformRole: true,
       canCreateBases: true,
       isActive: true,
+      mustChangePassword: true, // <-- lo incluimos para que no quede undefined en el front
       createdAt: true,
     },
   });
 }
 
 /** Otorga o quita el permiso global de "crear bases" a un usuario. */
-export async function setUserCanCreateBases(userId: number, can: boolean) {
+export async function setUserCanCreateBases(userId: number, can: boolean): Promise<UserAdminList> {
   return prisma.user.update({
     where: { id: userId },
     data: { canCreateBases: can },
@@ -74,6 +88,8 @@ export async function setUserCanCreateBases(userId: number, can: boolean) {
       platformRole: true,
       canCreateBases: true,
       isActive: true,
+      mustChangePassword: true,
+      createdAt: true,
     },
   });
 }
@@ -96,11 +112,11 @@ export async function getUserForLogin(emailRaw: string) {
       id: true,
       email: true,
       fullName: true,
-      passwordHash: true,
+      passwordHash: true,   // necesario para comparar bcrypt
       platformRole: true,
       isActive: true,
       mustChangePassword: true,
-      canCreateBases: true, // opcional, por si lo quieres en frontend tras login
+      canCreateBases: true, // útil si luego condicionas UI por este flag
     },
   });
 }
