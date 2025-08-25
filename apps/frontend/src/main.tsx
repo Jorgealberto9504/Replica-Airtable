@@ -12,6 +12,7 @@ import App from './App';
 // Proveedor del sistema de rutas. Debe envolver a <App />
 // para que funcionen <Routes>, <Route>, <Link>, <Navigate>, etc.
 import { BrowserRouter } from 'react-router-dom';
+import { AuthProvider } from './auth/AuthContext';
 
 // Busca el <div id="root"></div> en index.html, crea el “root” concurrente y renderiza.
 // <React.StrictMode> activa comprobaciones extra en desarrollo.
@@ -20,7 +21,9 @@ import { BrowserRouter } from 'react-router-dom';
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>
-      <App />
+      <AuthProvider>
+        <App />
+      </AuthProvider>
     </BrowserRouter>
   </React.StrictMode>
 );

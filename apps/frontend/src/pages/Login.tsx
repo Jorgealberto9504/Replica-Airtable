@@ -19,6 +19,7 @@ type LoginResp = {
     fullName: string;
     platformRole: 'USER' | 'SYSADMIN';
     mustChangePassword: boolean; // si es true, en el futuro podemos forzar flujo de cambio de password
+    canCreateBases?: boolean;     // añadido por consistencia con lo que expone /auth/me
   };
 };
 
@@ -28,56 +29,40 @@ export default function Login() {
   const nav = useNavigate();
 
   // ====== Estado local del formulario ======
-  // email/password: valores controlados de los inputs
-  // err: mensaje de error para mostrar en la UI
-  // loading: bandera para deshabilitar el botón mientras se hace la petición
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   // ====== Manejador del submit del formulario ======
-  // - Previene recarga de página
-  // - Limpia error previo y activa loading
-  // - Llama a POST /auth/login con email y password
-  // - Si ok -> navega a /dashboard
-  // - Si falla -> muestra mensaje de error
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
     setLoading(true);
     try {
-      // Nota: si en el backend decidimos guardar emails normalizados, aquí podríamos usar .toLowerCase().
+      // Normalizamos los valores antes de enviarlos
       const resp = await postJSON<LoginResp>('/auth/login', {
-        email: email.trim(),
-        password: password.trim(),
+        email: email.trim(),     // si algún día decides forzar lowercase, usa .toLowerCase()
+        password: password.trim()
       });
 
       if (resp.ok) {
-        // Si en el futuro queremos forzar cambio de contraseña:
-        // if (resp.user?.mustChangePassword) return nav('/change-password', { replace: true });
+  // (opcional) golpe rápido a /auth/me para “despertar” la cookie en dev
+  try { await fetch(`${import.meta.env.VITE_API_URL ?? 'http://localhost:8080'}/auth/me`, { credentials: 'include' }); } catch {}
 
-        // Redirige al dashboard (reemplaza la historia para no volver con "atrás")
-        nav('/dashboard', { replace: true });
-        return;
-      }
-
-      // Si el backend respondió ok:false, mostramos un mensaje genérico
+  // recarga dura: garantiza que Dashboard vea la cookie y /auth/me responda 200
+  window.location.href = '/dashboard';
+  return;
+}
       setErr('Credenciales inválidas');
     } catch (e: any) {
-      // Errores de red o de status HTTP no-OK parseados por handleRes en http.ts
       setErr(e?.message ?? 'Error de conexión');
     } finally {
-      // Siempre apagar loading al final
       setLoading(false);
     }
   }
 
   // ====== Render ======
-  // Estructura:
-  // - Contenedor .login-page (centra la tarjeta)
-  // - Fondo .login-bg con el logo como marca de agua (CSS en styles/global.css)
-  // - Tarjeta .login-card con el formulario
   return (
     <div className="login-page">
       {/* Marca de agua a pantalla completa (el CSS se encarga de cubrir y centrar) */}
@@ -103,10 +88,12 @@ export default function Login() {
             className="input"
             type="email"
             value={email}
-            onChange={e => setEmail(e.target.value)} // actualiza estado
+            onChange={e => setEmail(e.target.value)}
             placeholder="tucorreo@mbqinc.com"
             autoComplete="username"
+            spellCheck={false}
             required
+            disabled={loading}
           />
 
           {/* Campo Password */}
@@ -116,10 +103,11 @@ export default function Login() {
             className="input"
             type="password"
             value={password}
-            onChange={e => setPassword(e.target.value)} // actualiza estado
+            onChange={e => setPassword(e.target.value)}
             placeholder="••••••••"
             autoComplete="current-password"
             required
+            disabled={loading}
           />
 
           {/* Botón de envío: deshabilitado mientras loading=true */}

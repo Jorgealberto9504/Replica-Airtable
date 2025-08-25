@@ -58,10 +58,3 @@ export async function postJSON<T>(path: string, body: unknown): Promise<T> {
   return handleRes<T>(res);
 }
 
-// -----------------------------------------------------------------------------
-// Notas:
-// - Si en el futuro necesitas PUT/PATCH/DELETE, copia postJSON y cambia method.
-// - Este archivo NO conoce rutas concretas: sólo cómo llamar y manejar errores.
-//   Las rutas concretas viven en módulos como src/api/auth.ts, src/api/users.ts.
-// - Tipado <T>: quien llama decide el tipo esperado de respuesta (ej. MeResp).
-// -----------------------------------------------------------------------------

@@ -56,10 +56,9 @@ export function adminRegisterUser(input: {
   fullName: string;
   tempPassword: string;
   platformRole?: 'USER' | 'SYSADMIN';
-  canCreateBases?: boolean;            // <- NUEVO
+  canCreateBases?: boolean;           
 
 }) {
-  // Nota: aquí usamos `any` para el tipo de `user` de respuesta por simplicidad.
-  // Si quieres tiparlo bien, crea y usa un tipo `UserPublic` reutilizable.
+
   return postJSON<{ ok: boolean; user?: any }>('/auth/admin/register', input);
 }
