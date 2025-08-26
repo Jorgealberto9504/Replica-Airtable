@@ -10,20 +10,23 @@ datasource db {
 }
 
 // === Roles globales (en toda la plataforma) ===
-// USER: usuario normal (puede o no tener permiso global para crear bases)
-// SYSADMIN: administración de la plataforma (puede registrar usuarios, etc.)
 enum PlatformRole {
   USER
   SYSADMIN
 }
 
 // === Roles por Base (membership por base) ===
-// Rol que un usuario tiene DENTRO de una base específica
+// OJO: ya NO usamos ADMIN; el “dueño” (owner) se modela con Base.ownerId
 enum BaseRole {
-  ADMIN       // administra la base y sus miembros
   EDITOR      // puede crear/editar/eliminar registros
   COMMENTER   // puede comentar
   VIEWER      // solo lectura
+}
+
+// === Visibilidad de la Base ===
+enum BaseVisibility {
+  PUBLIC
+  PRIVATE
 }
 
 // === Usuario (datos básicos + rol global + permisos globales) ===
@@ -52,16 +55,23 @@ model User {
 
 // === Base (espacio tipo Airtable) ===
 model Base {
-  id        Int          @id @default(autoincrement())
-  name      String
-  createdAt DateTime     @default(now())
+  id          Int             @id @default(autoincrement())
+  name        String
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
 
-  // Propietario (quien creó la base)
-  ownerId   Int
-  owner     User         @relation("BaseOwner", fields: [ownerId], references: [id])
+  // Propietario / dueño
+  ownerId     Int
+  owner       User            @relation("BaseOwner", fields: [ownerId], references: [id])
+
+  // Pública / Privada
+  visibility  BaseVisibility  @default(PRIVATE)
 
   // Miembros con rol por base
-  members   BaseMember[]
+  members     BaseMember[]
+
+  @@index([ownerId])
+  @@index([visibility])
 }
 
 // === Membership (user + base + rol por base) ===
