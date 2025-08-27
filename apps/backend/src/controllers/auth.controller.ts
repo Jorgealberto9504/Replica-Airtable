@@ -1,17 +1,12 @@
 // apps/backend/src/controllers/auth.controller.ts
 import type { Request, Response } from 'express';
-
-// --- servicios/DB/utilidades ---
 import { prisma } from '../services/db.js';
-import {
-  createUserAdmin,
-  findUserByEmail,
-  isUniqueEmailError,
-} from '../services/users.service.js';
+import {createUserAdmin, findUserByEmail, isUniqueEmailError,} from '../services/users.service.js';
 import { checkPassword } from '../services/security/password.service.js';
 import { signJwt } from '../services/security/jwt.service.js';
 import { getAuthUser } from '../middlewares/auth.middleware.js';
-
+import { isStrongPassword, STRONG_PWD_HELP } from '../services/security/password.rules.js';
+import { hashPassword } from '../services/security/password.service.js';
 // === Config de cookies/JWT ===
 const COOKIE_NAME = process.env.COOKIE_NAME ?? 'session';
 
@@ -30,7 +25,7 @@ function isAllowedDomain(email: string): boolean {
 }
 
 // === Reglas de contraseña fuerte (las que acordamos con Sofía) ===
-import { isStrongPassword, STRONG_PWD_HELP } from '../services/security/password.rules.js';
+
 
 /* ------------------------------------------------------------------------------------------------
  *  LOGIN / LOGOUT / ME
@@ -211,4 +206,77 @@ export async function adminRegister(req: Request, res: Response) {
     console.error('[adminRegister] error:', e);
     return res.status(500).json({ ok: false, error: 'Error al registrar usuario' });
   }
+}
+
+/**
+ * POST /auth/change-password
+ * Body: { newPassword, confirm }
+ * Uso: sólo en primer login (cuando mustChangePassword === true).
+ * - Valida fuerza y coincidencia
+ * - Actualiza hash, apaga mustChangePassword y marca passwordUpdatedAt
+ * - Rota el JWT en la cookie
+ */
+export async function changePasswordFirstLogin(req: Request, res: Response) {
+  const auth = getAuthUser<{ id: number }>(req);
+  if (!auth) {
+    return res.status(401).json({ ok: false, error: 'No autenticado' });
+  }
+
+  const { newPassword, confirm } = req.body as {
+    newPassword?: string;
+    confirm?: string;
+  };
+
+  // 1) Validaciones básicas
+  if (!newPassword || !confirm) {
+    return res.status(400).json({ ok: false, error: 'Faltan campos' });
+  }
+  if (newPassword !== confirm) {
+    return res.status(400).json({ ok: false, error: 'La confirmación no coincide' });
+  }
+  if (!isStrongPassword(newPassword)) {
+    return res.status(400).json({ ok: false, error: STRONG_PWD_HELP });
+  }
+
+  // 2) Cargar usuario y verificar que realmente deba cambiar
+  const user = await prisma.user.findUnique({
+    where: { id: auth.id },
+    select: { id: true, email: true, platformRole: true, mustChangePassword: true },
+  });
+  if (!user) {
+    return res.status(404).json({ ok: false, error: 'Usuario no encontrado' });
+  }
+  if (!user.mustChangePassword) {
+    return res.status(409).json({ ok: false, error: 'Este usuario no requiere cambio de contraseña' });
+  }
+
+  // 3) Guardar nuevo hash y desactivar el flag
+  const newHash = await hashPassword(newPassword);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordHash: newHash,
+      mustChangePassword: false,
+      passwordUpdatedAt: new Date(),
+    },
+  });
+
+  // 4) Rotar JWT (igual que en /auth/login)
+  const token = signJwt({
+    sub: String(user.id),
+    email: user.email,
+    role: user.platformRole,
+  });
+  const inProd = process.env.NODE_ENV === 'production';
+  const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+  res.cookie(COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: inProd,
+    sameSite: 'lax',
+    maxAge: MAX_AGE_MS,
+    path: '/',
+  });
+
+  return res.json({ ok: true });
 }

@@ -1,7 +1,7 @@
 // apps/frontend/src/api/auth.ts
 // -----------------------------------------------------------------------------
 // ¿Qué es este archivo?
-// Un “mini SDK” del FRONT para autenticación. Centraliza las llamadas HTTP
+//Centraliza las llamadas HTTP
 // a rutas del backend bajo /auth (login/me/logout/admin/register, etc.).
 // Ventajas:
 //  - Las páginas NO usan fetch directo: importan funciones claras.

@@ -7,45 +7,63 @@ import { verifyJwt } from '../services/security/jwt.service.js';
 const COOKIE_NAME = process.env.COOKIE_NAME ?? 'session';
 
 // 1) Verifica que el usuario esté autenticado (JWT válido en la cookie)
-export async function requireAuth(req: Request, res: Response, next: NextFunction) {
+// apps/backend/src/middlewares/auth.middleware.ts
+
+export async function requireAuth(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
   try {
     // a) Leer la cookie
     const token = req.cookies?.[COOKIE_NAME];
     if (!token) {
-      return res.status(401).json({ ok: false, error: 'No autenticado (sin cookie)' });
+      res.status(401).json({ ok: false, error: 'No autenticado (sin cookie)' });
+      return;
     }
 
     // b) Validar y decodificar el JWT
     const payload = verifyJwt<{ sub: string }>(token); // sub = id del usuario en string
     const userId = Number(payload.sub);
     if (!userId) {
-      return res.status(401).json({ ok: false, error: 'Token inválido' });
+      res.status(401).json({ ok: false, error: 'Token inválido' });
+      return;
     }
 
-    // c) Cargar el usuario desde la base (para revisar que exista y esté activo)
+    // c) Cargar el usuario desde la base (y revisar que exista y esté activo)
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: {
         id: true,
         email: true,
-        platformRole: true,      // 'USER' | 'SYSADMIN'
-        isActive: true,          // para desactivar cuentas
-        mustChangePassword: true,// para “cambiar contraseña”
-        canCreateBases: true,    // <-- NUEVO: permiso global de creador de bases
+        platformRole: true,       // 'USER' | 'SYSADMIN'
+        isActive: true,           // para desactivar cuentas
+        mustChangePassword: true, // para “cambiar contraseña”
+        canCreateBases: true,     // permiso global de creador de bases
       },
     });
 
     if (!user || !user.isActive) {
-      return res.status(401).json({ ok: false, error: 'No autorizado' });
+      res.status(401).json({ ok: false, error: 'No autorizado' });
+      return;
     }
 
-    // d) Guardar el usuario en la request para que otros lo usen
-    (req as any).user = user;
+    // d) BLOQUEO si debe cambiar contraseña
+    if (user.mustChangePassword) {
+      // Tip: "reason" ayuda al frontend a redirigir a /change-password
+      res.status(403).json({
+        ok: false,
+        error: 'Debes cambiar tu contraseña primero',
+        reason: 'MUST_CHANGE_PASSWORD',
+      });
+      return;
+    }
 
-    // e) Pasar al siguiente middleware/controlador
+    // e) Pegar el usuario a la request y avanzar
+    (req as any).user = user;
     next();
   } catch {
-    return res.status(401).json({ ok: false, error: 'Token inválido' });
+    res.status(401).json({ ok: false, error: 'Token inválido' });
   }
 }
 
@@ -86,4 +104,53 @@ export function getAuthUser<
   }
 >(req: Request): T | undefined {
   return (req as any).user as T | undefined;
+}
+
+// Permite el paso aunque mustChangePassword === true
+// Úsalo en rutas como /auth/me, /auth/change-password y /auth/logout
+export async function requireAuthAllowMustChange(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    // a) Leer cookie con el JWT
+    const token = req.cookies?.[COOKIE_NAME];
+    if (!token) {
+      res.status(401).json({ ok: false, error: 'No autenticado (sin cookie)' });
+      return;
+    }
+
+    // b) Validar/decodificar
+    const payload = verifyJwt<{ sub: string }>(token);
+    const userId = Number(payload.sub);
+    if (!userId) {
+      res.status(401).json({ ok: false, error: 'Token inválido' });
+      return;
+    }
+
+    // c) Cargar usuario (NO bloquea por mustChangePassword)
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        platformRole: true,
+        isActive: true,
+        mustChangePassword: true,
+        canCreateBases: true,
+      },
+    });
+
+    if (!user || !user.isActive) {
+      res.status(401).json({ ok: false, error: 'No autorizado' });
+      return;
+    }
+
+    // d) Pegar usuario y continuar
+    (req as any).user = user;
+    next();
+  } catch {
+    res.status(401).json({ ok: false, error: 'Token inválido' });
+  }
 }
