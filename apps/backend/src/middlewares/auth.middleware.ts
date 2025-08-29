@@ -107,7 +107,7 @@ export function getAuthUser<
 }
 
 // Permite el paso aunque mustChangePassword === true
-// Úsalo en rutas como /auth/me, /auth/change-password y /auth/logout
+// Úsalo en rutas como /auth/change-password y /auth/logout
 export async function requireAuthAllowMustChange(
   req: Request,
   res: Response,
