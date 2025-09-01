@@ -1,0 +1,77 @@
+
+Login
+post
+http://localhost:8080/auth/login
+{
+    "email": "jorge@mbqinc.com",
+    "password": "Aa12345!"
+}
+
+
+Registro
+post
+http://localhost:8080/auth/admin/register
+
+{
+  "email": "Mario@mbqinc.com",
+  "fullName": "Mario Hernandez",
+  "tempPassword": "Aa12345!",
+  "platformRole": "USER",
+  "canCreateBases": false
+}
+
+
+loguear user nuevo
+Login
+post
+http://localhost:8080/auth/login
+{
+    "email": "Mario@mbqinc.com",
+    "password": "Aa12345!"
+}
+
+
+pegarle a endpoint
+http://localhost:8080/auth/me
+no da acceso
+
+
+
+
+change-password
+
+{ "newPassword": "Bb12345!", "confirm": "Bb12345!" }
+
+pegarle al endpoinr me
+
+probar acceso en el front y revisar en neon la flag de mustchagepassword
+
+
+
+
+
+
+GET http://localhost:8080/bases/1/members
+
+
+
+
+POST http://localhost:8080/bases/1/members
+
+{
+  "email": "marcos@mbqinc.com",
+  "role": "EDITOR"
+}
+
+
+
+
+PATCH http://localhost:8080/bases/1/members/5
+
+{
+  "role": "VIEWER"
+}
+
+
+
+DELETE http://localhost:8080/bases/1/members/5
