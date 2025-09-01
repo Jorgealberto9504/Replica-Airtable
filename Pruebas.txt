@@ -45,3 +45,33 @@ change-password
 pegarle al endpoinr me
 
 probar acceso en el front y revisar en neon la flag de mustchagepassword
+
+
+
+
+
+
+GET http://localhost:8080/bases/1/members
+
+
+
+
+POST http://localhost:8080/bases/1/members
+
+{
+  "email": "marcos@mbqinc.com",
+  "role": "EDITOR"
+}
+
+
+
+
+PATCH http://localhost:8080/bases/1/members/5
+
+{
+  "role": "VIEWER"
+}
+
+
+
+DELETE http://localhost:8080/bases/1/members/5
