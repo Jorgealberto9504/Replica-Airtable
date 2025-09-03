@@ -8,6 +8,7 @@ import dbRouter from './routes/db.routes.js';
 import authRouter from './routes/auth.routes.js'; // <-- NUEVO
 import usersRouter from './routes/users.routes.js'; // <-- NUEVO
 import membersRouter from './routes/members.routes.js';
+import basesRouter from './routes/bases.routes.js'; // <- NUEVO
 
 
 const app = express();
@@ -27,5 +28,6 @@ app.use('/db', dbRouter);
 app.use('/auth', authRouter); // <-- NUEVO
 app.use('/users', usersRouter); // <-- NUEVO
 app.use('/bases', membersRouter);
+app.use('/bases', basesRouter); // <- NUEVO
 
 export default app;
