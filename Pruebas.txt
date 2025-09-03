@@ -75,3 +75,14 @@ PATCH http://localhost:8080/bases/1/members/5
 
 
 DELETE http://localhost:8080/bases/1/members/5
+
+
+
+
+
+
+
+{
+    "name": "Ventas Q4",
+    "visibility": "PRIVATE"
+}
