@@ -5,10 +5,11 @@ import cookieParser from 'cookie-parser';
 
 import healthRouter from './routes/health.routes.js';
 import dbRouter from './routes/db.routes.js';
-import authRouter from './routes/auth.routes.js'; // <-- NUEVO
-import usersRouter from './routes/users.routes.js'; // <-- NUEVO
+import authRouter from './routes/auth.routes.js';
+import usersRouter from './routes/users.routes.js'; 
 import membersRouter from './routes/members.routes.js';
-import basesRouter from './routes/bases.routes.js'; // <- NUEVO
+import basesRouter from './routes/bases.routes.js'; 
+import tablesRouter from './routes/tables.routes.js';
 
 
 const app = express();
@@ -25,9 +26,10 @@ app.use(cookieParser()); // <-- ya lo dejamos listo para 3.3 (login/cookies)
 // rutas
 app.use('/health', healthRouter);
 app.use('/db', dbRouter);
-app.use('/auth', authRouter); // <-- NUEVO
-app.use('/users', usersRouter); // <-- NUEVO
+app.use('/auth', authRouter); 
+app.use('/users', usersRouter); 
 app.use('/bases', membersRouter);
-app.use('/bases', basesRouter); // <- NUEVO
+app.use('/bases', basesRouter);
+app.use('/bases', tablesRouter);
 
 export default app;
