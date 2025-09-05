@@ -65,6 +65,10 @@ export async function createTableCtrl(req: Request, res: Response) {
     const table = await createTable(baseId, parsed.data.name);
     return res.status(201).json({ ok: true, table });
   } catch (e: any) {
+    // NUEVO T6.4: soportar errores con status/ body lanzados desde service
+    if (e?.status) {
+      return res.status(e.status).json(e.body ?? { ok: false, error: e.message });
+    }
     if (isDuplicateTableNameError(e)) {
       return res
         .status(409)
@@ -146,6 +150,10 @@ export async function updateTableCtrl(req: Request, res: Response) {
   } catch (e: any) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
       return res.status(404).json({ ok: false, error: 'Tabla no encontrada' });
+    }
+    // NUEVO T6.4: soportar errores con status/ body lanzados desde service
+    if (e?.status) {
+      return res.status(e.status).json(e.body ?? { ok: false, error: e.message });
     }
     if (isDuplicateTableNameError(e)) {
       return res

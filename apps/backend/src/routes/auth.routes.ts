@@ -14,16 +14,25 @@ import { guardGlobal } from '../permissions/guard.js';
 
 const router = Router();
 
-// --- Auth básicas ---
-router.post('/login', login);                 // firma JWT y setea cookie
-router.post('/logout', requireAuth, logout);  // borra cookie
-router.get('/me', requireAuth, me);           // devuelve usuario autenticado
+//POST /auth/login  { email, password }
+//LOGUEAR USUARIO
+router.post('/login', login);  
 
-// --- Registro sólo por SYSADMIN (según matriz de permisos) ---
+//POST /auth/logout  (borra cookie)
+//LOGOUT USUARIO
+router.post('/logout', requireAuth, logout); 
+
+//GET /auth/me
+//DEVUELVE USUARIO AUTENTICADO
+router.get('/me', requireAuth, me);          
+
+//POST /auth/admin/register  { email, password }
+//REGISTRAR NUEVO USUARIO (sólo sysadmin)
 router.post('/admin/register', requireAuth, guardGlobal('platform:users:manage'), adminRegister);    // SOLO SYSADMIN por rules.ts
 
 
-// --- Cambio de contraseña (primer login) ---
+// POST /auth/change-password  { oldPassword, newPassword }
+// Permite cambiar la contraseña en el primer login cuando mustChangePassword=true
 router.post('/change-password', requireAuthAllowMustChange, changePasswordFirstLogin);
 
 export default router;

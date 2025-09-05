@@ -37,13 +37,17 @@ export async function createBaseCtrl(req: Request, res: Response) {
       .json({ ok: false, error: parsed.error.issues[0]?.message ?? 'Body inválido' });
   }
 
-  const base = await createBase({
-    ownerId: me.id,
-    name: parsed.data.name,
-    visibility: parsed.data.visibility ?? 'PRIVATE',
-  });
-
-  return res.status(201).json({ ok: true, base });
+  try { // NUEVO T6.4: capturar 409 que viene desde service
+    const base = await createBase({
+      ownerId: me.id,
+      name: parsed.data.name,
+      visibility: parsed.data.visibility ?? 'PRIVATE',
+    });
+    return res.status(201).json({ ok: true, base });
+  } catch (err: any) { // NUEVO T6.4
+    if (err.status) return res.status(err.status).json(err.body ?? { ok: false, error: err.message });
+    return res.status(500).json({ ok: false, error: 'No se pudo crear la base' });
+  }
 }
 
 export async function listMyBasesCtrl(req: Request, res: Response) {
@@ -83,8 +87,13 @@ export async function updateBaseCtrl(req: Request, res: Response) {
       .json({ ok: false, error: parsed.error.issues[0]?.message ?? 'Body inválido' });
   }
 
-  const base = await updateBase(baseId, parsed.data);
-  return res.json({ ok: true, base });
+  try { // NUEVO T6.4: capturar 409 si el rename rompe la unicidad (ownerId, name)
+    const base = await updateBase(baseId, parsed.data);
+    return res.json({ ok: true, base });
+  } catch (err: any) { // NUEVO T6.4
+    if (err.status) return res.status(err.status).json(err.body ?? { ok: false, error: err.message });
+    return res.status(500).json({ ok: false, error: 'No se pudo actualizar la base' });
+  }
 }
 
 export async function deleteBaseCtrl(req: Request, res: Response) {

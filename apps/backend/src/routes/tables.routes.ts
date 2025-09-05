@@ -12,39 +12,24 @@ import {
 
 const router = Router();
 
-/**
- * Crear tabla en una base
- * POST /bases/:baseId/tables
- * Requiere: autenticado + permiso 'schema:manage' en ESA base
- */
+// POST /bases/:baseId/tables  { name }
+//CREAR UNA TABLA EN UNA BASE
 router.post('/:baseId/tables', requireAuth, guard('schema:manage'), createTableCtrl);
 
-/**
- * Listar tablas de una base
- * GET /bases/:baseId/tables
- * Requiere: autenticado + permiso 'base:view' en ESA base
- */
+// GET /bases/:baseId/tables
+//LISTAR TABLAS DE UNA BASE
 router.get('/:baseId/tables', requireAuth, guard('base:view'), listTablesCtrl);
 
-/**
- * Obtener una tabla específica de una base
- * GET /bases/:baseId/tables/:tableId
- * Requiere: autenticado + permiso 'base:view' en ESA base
- */
+// GET /bases/:baseId/tables/:tableId
+//VER UNA TABLA POR ID
 router.get('/:baseId/tables/:tableId', requireAuth, guard('base:view'), getTableCtrl);
 
-/**
- * Renombrar/actualizar una tabla
- * PATCH /bases/:baseId/tables/:tableId
- * Requiere: autenticado + permiso 'schema:manage' en ESA base
- */
+// PATCH /bases/:baseId/tables/:tableId  { name }
+//ACTUALIZAR UNA TABLA
 router.patch('/:baseId/tables/:tableId', requireAuth, guard('schema:manage'), updateTableCtrl);
 
-/**
- * Eliminar una tabla
- * DELETE /bases/:baseId/tables/:tableId
- * Requiere: autenticado + permiso 'schema:manage' en ESA base
- */
+// DELETE /bases/:baseId/tables/:tableId
+//ELIMINAR UNA TABLA
 router.delete('/:baseId/tables/:tableId', requireAuth, guard('schema:manage'), deleteTableCtrl);
 
 export default router;

@@ -73,8 +73,12 @@ model Base {
   // Tablas dentro de la base
   tables      TableDef[]
 
+  // Índices y unicidad
   @@index([ownerId])
   @@index([visibility])
+
+  // Novedad Tarea 6.4: evitar nombres duplicados por owner
+  @@unique([ownerId, name])
 }
 
 // === Membership (user + base + rol por base) ===

@@ -2,21 +2,46 @@
 import { prisma } from './db.js';
 import { Prisma } from '@prisma/client';
 
+/** Helper para detectar violación de unique (baseId, name) */
+export function isDuplicateTableNameError(e: unknown): boolean {
+  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
+}
+
+// NUEVO T6.4: helper local para mapear duplicados de tabla a HTTP 409
+function rethrowConflictIfDuplicateTable(e: unknown) {
+  if (isDuplicateTableNameError(e)) {
+    const err: any = new Error('Unique constraint violation');
+    err.status = 409;
+    err.body = {
+      error: 'CONFLICT',
+      detail: 'Duplicate table name within this base', // (baseId, name)
+      code: 'P2002',
+      meta: (e as Prisma.PrismaClientKnownRequestError).meta, // opcional
+    };
+    throw err;
+  }
+  throw e;
+}
+
 /**
  * Crea una tabla dentro de una base.
  * - (baseId, name) es único por el @@unique definido en Prisma.
  */
 export async function createTable(baseId: number, name: string) {
-  return prisma.tableDef.create({
-    data: { baseId, name },
-    select: {
-      id: true,
-      baseId: true,
-      name: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  });
+  try { // NUEVO T6.4: capturar P2002 → 409
+    return await prisma.tableDef.create({
+      data: { baseId, name },
+      select: {
+        id: true,
+        baseId: true,
+        name: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  } catch (e) { // NUEVO T6.4
+    rethrowConflictIfDuplicateTable(e);
+  }
 }
 
 /**
@@ -73,19 +98,23 @@ export async function updateTable(
     throw err;
   }
 
-  return prisma.tableDef.update({
-    where: { id: tableId },
-    data: {
-      ...(patch.name !== undefined ? { name: patch.name } : {}),
-    },
-    select: {
-      id: true,
-      baseId: true,
-      name: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  });
+  try { // NUEVO T6.4: capturar P2002 si el rename rompe la unicidad (baseId, name)
+    return await prisma.tableDef.update({
+      where: { id: tableId },
+      data: {
+        ...(patch.name !== undefined ? { name: patch.name } : {}),
+      },
+      select: {
+        id: true,
+        baseId: true,
+        name: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  } catch (e) { // NUEVO T6.4
+    rethrowConflictIfDuplicateTable(e);
+  }
 }
 
 /**
@@ -106,9 +135,4 @@ export async function deleteTable(baseId: number, tableId: number) {
   await prisma.tableDef.delete({
     where: { id: tableId },
   });
-}
-
-/** Helper para detectar violación de unique (baseId, name) */
-export function isDuplicateTableNameError(e: unknown): boolean {
-  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
 }
