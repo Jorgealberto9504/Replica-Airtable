@@ -23,7 +23,7 @@ router.post('/login', login);
 router.post('/logout', requireAuth, logout); 
 
 //GET /auth/me
-//DEVUELVE USUARIO AUTENTICADO
+//DEVUELVE DATOS DE USUARIO AUTENTICADO
 router.get('/me', requireAuth, me);          
 
 //POST /auth/admin/register  { email, password }
@@ -31,7 +31,7 @@ router.get('/me', requireAuth, me);
 router.post('/admin/register', requireAuth, guardGlobal('platform:users:manage'), adminRegister);    // SOLO SYSADMIN por rules.ts
 
 
-// POST /auth/change-password  { oldPassword, newPassword }
+// POST /auth/change-password  {newPassword, confirm }
 // Permite cambiar la contraseña en el primer login cuando mustChangePassword=true
 router.post('/change-password', requireAuthAllowMustChange, changePasswordFirstLogin);
 
