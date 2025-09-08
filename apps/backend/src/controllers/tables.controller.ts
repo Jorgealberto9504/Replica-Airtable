@@ -1,4 +1,3 @@
-// apps/backend/src/controllers/tables.controller.ts
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
@@ -10,6 +9,13 @@ import {
   updateTable,               // firma: (baseId, tableId, patch)
   deleteTable,               // firma: (baseId, tableId)
   isDuplicateTableNameError,
+  // ===== Papelera (owner) =====
+  listTrashedTablesForBase,
+  restoreTable,
+  deleteTablePermanently,
+  emptyTrashForBase,
+  // ===== NUEVO: Papelera GLOBAL (admin) =====
+  listTrashedTablesForAdmin,            // <-- NUEVO
 } from '../services/tables.service.js';
 
 // ---------- Schemas (validación de inputs) ----------
@@ -65,9 +71,8 @@ export async function createTableCtrl(req: Request, res: Response) {
     const table = await createTable(baseId, parsed.data.name);
     return res.status(201).json({ ok: true, table });
   } catch (e: any) {
-    // NUEVO T6.4: soportar errores con status/ body lanzados desde service
     if (e?.status) {
-      return res.status(e.status).json(e.body ?? { ok: false, error: e.message });
+      return res.status(e.status).json(e.body ?? { ok: false, error: e.message }); // <-- NUEVO: base en papelera (409), etc.
     }
     if (isDuplicateTableNameError(e)) {
       return res
@@ -82,7 +87,7 @@ export async function createTableCtrl(req: Request, res: Response) {
 
 /**
  * GET /bases/:baseId/tables
- * Lista las tablas de una base.
+ * Lista las tablas de una base (excluye papelera).
  * Requiere: requireAuth + guard('base:view') en ruta.
  */
 export async function listTablesCtrl(req: Request, res: Response) {
@@ -151,9 +156,8 @@ export async function updateTableCtrl(req: Request, res: Response) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
       return res.status(404).json({ ok: false, error: 'Tabla no encontrada' });
     }
-    // NUEVO T6.4: soportar errores con status/ body lanzados desde service
     if (e?.status) {
-      return res.status(e.status).json(e.body ?? { ok: false, error: e.message });
+      return res.status(e.status).json(e.body ?? { ok: false, error: e.message }); // <-- NUEVO: base/tabla en papelera (409)
     }
     if (isDuplicateTableNameError(e)) {
       return res
@@ -168,6 +172,7 @@ export async function updateTableCtrl(req: Request, res: Response) {
  * DELETE /bases/:baseId/tables/:tableId
  * Elimina una tabla de la base (verifica pertenencia).
  * Requiere: requireAuth + guard('schema:manage') en ruta.
+ * NOTA: ahora hace SOFT DELETE (papelera)
  */
 export async function deleteTableCtrl(req: Request, res: Response) {
   try {
@@ -177,12 +182,168 @@ export async function deleteTableCtrl(req: Request, res: Response) {
     const baseId = parseBaseId(req);
     const tableId = parseTableId(req);
 
-    await deleteTable(baseId, tableId);
+    await deleteTable(baseId, tableId); // mueve a papelera o idempotente si base ya está en papelera
     return res.json({ ok: true });
   } catch (e: any) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
       return res.status(404).json({ ok: false, error: 'Tabla no encontrada' });
     }
+    if (e?.status) {
+      return res.status(e.status).json({ ok: false, error: e.message }); // <-- NUEVO
+    }
     return res.status(500).json({ ok: false, error: 'No se pudo eliminar la tabla' });
+  }
+}
+
+/* ===========================
+   ====== Papelera (owner) ===
+   =========================== */
+
+/** GET /bases/:baseId/tables/trash — Lista tablas en papelera (owner) */
+export async function listTrashedTablesCtrl(req: Request, res: Response) {
+  try {
+    const me = getAuthUser<{ id: number }>(req);
+    if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
+    const baseId = parseBaseId(req);
+    const tables = await listTrashedTablesForBase(baseId);
+    return res.json({ ok: true, tables });
+  } catch (e: any) {
+    return res.status(e?.status ?? 500).json({ ok: false, error: e?.message ?? 'No se pudo listar la papelera de tablas' });
+  }
+}
+
+/** POST /bases/:baseId/tables/:tableId/restore — Restaurar tabla (owner) */
+export async function restoreTableCtrl(req: Request, res: Response) {
+  try {
+    const me = getAuthUser<{ id: number }>(req);
+    if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
+
+    const baseId = parseBaseId(req);
+    const tableId = parseTableId(req);
+
+    const table = await restoreTable(baseId, tableId);
+    return res.json({ ok: true, table });
+  } catch (e: any) {
+    if (e?.status) {
+      return res.status(e.status).json(e.body ?? { ok: false, error: e.message });
+    }
+    return res.status(500).json({ ok: false, error: 'No se pudo restaurar la tabla' });
+  }
+}
+
+/** DELETE /bases/:baseId/tables/:tableId/permanent — Borrado definitivo (owner) */
+export async function deleteTablePermanentCtrl(req: Request, res: Response) {
+  try {
+    const me = getAuthUser<{ id: number }>(req);
+    if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
+
+    const baseId = parseBaseId(req);
+    const tableId = parseTableId(req);
+
+    await deleteTablePermanently(baseId, tableId);
+    return res.json({ ok: true });
+  } catch (e: any) {
+    if (e?.status) {
+      return res.status(e.status).json({ ok: false, error: e.message });
+    }
+    return res.status(500).json({ ok: false, error: 'No se pudo eliminar definitivamente la tabla' });
+  }
+}
+
+/** POST /bases/:baseId/tables/trash/empty — Vaciar papelera de tablas de la base (owner) */
+export async function emptyTableTrashCtrl(req: Request, res: Response) {
+  try {
+    const me = getAuthUser<{ id: number }>(req);
+    if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
+
+    const baseId = parseBaseId(req);
+    await emptyTrashForBase(baseId);
+    return res.json({ ok: true });
+  } catch (e: any) {
+    return res.status(e?.status ?? 500).json({ ok: false, error: e?.message ?? 'No se pudo vaciar la papelera de la base' });
+  }
+}
+
+/* ===========================
+   ======= NUEVO ADMIN =======
+   =========================== */
+/**
+ * GET /bases/admin/:baseId/tables/trash
+ * Lista la papelera de tablas de una base — SOLO SYSADMIN
+ */
+export async function listTrashedTablesAdminCtrl(req: Request, res: Response) {
+  const me = getAuthUser<{ platformRole: 'USER' | 'SYSADMIN' }>(req);
+  if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
+  if (me.platformRole !== 'SYSADMIN') return res.status(403).json({ ok: false, error: 'FORBIDDEN' });
+
+  const baseId = parseBaseId(req);
+  const tables = await listTrashedTablesForBase(baseId);
+  return res.json({ ok: true, tables });
+}
+
+/**
+ * GET /bases/admin/tables/trash?ownerId=&baseId=
+ * <-- NUEVO: Papelera GLOBAL de tablas — SOLO SYSADMIN
+ */
+export async function listAllTrashedTablesAdminCtrl(req: Request, res: Response) {
+  const me = getAuthUser<{ platformRole: 'USER' | 'SYSADMIN' }>(req);
+  if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
+  if (me.platformRole !== 'SYSADMIN') return res.status(403).json({ ok: false, error: 'FORBIDDEN' });
+
+  const ownerId = req.query.ownerId !== undefined ? Number(req.query.ownerId) : undefined;
+  const baseId = req.query.baseId !== undefined ? Number(req.query.baseId) : undefined;
+  if (ownerId !== undefined && (!Number.isInteger(ownerId) || ownerId <= 0)) {
+    return res.status(400).json({ ok: false, error: 'ownerId inválido' });
+  }
+  if (baseId !== undefined && (!Number.isInteger(baseId) || baseId <= 0)) {
+    return res.status(400).json({ ok: false, error: 'baseId inválido' });
+  }
+
+  const tables = await listTrashedTablesForAdmin({ ownerId, baseId });
+  return res.json({ ok: true, tables });
+}
+
+/**
+ * POST /bases/admin/:baseId/tables/:tableId/restore
+ * Restaurar tabla en papelera — SOLO SYSADMIN
+ */
+export async function restoreTableAdminCtrl(req: Request, res: Response) {
+  const me = getAuthUser<{ platformRole: 'USER' | 'SYSADMIN' }>(req);
+  if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
+  if (me.platformRole !== 'SYSADMIN') return res.status(403).json({ ok: false, error: 'FORBIDDEN' });
+
+  const baseId = parseBaseId(req);
+  const tableId = parseTableId(req);
+
+  try {
+    const table = await restoreTable(baseId, tableId);
+    return res.json({ ok: true, table });
+  } catch (e: any) {
+    if (e?.status) return res.status(e.status).json(e.body ?? { ok: false, error: e.message });
+    if (isDuplicateTableNameError(e)) {
+      return res.status(409).json({ ok: false, error: 'Nombre de tabla en uso (activa)' });
+    }
+    return res.status(500).json({ ok: false, error: 'No se pudo restaurar la tabla' });
+  }
+}
+
+/**
+ * DELETE /bases/admin/:baseId/tables/:tableId/permanent
+ * Borrado definitivo de tabla — SOLO SYSADMIN
+ */
+export async function deleteTablePermanentAdminCtrl(req: Request, res: Response) {
+  const me = getAuthUser<{ platformRole: 'USER' | 'SYSADMIN' }>(req);
+  if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
+  if (me.platformRole !== 'SYSADMIN') return res.status(403).json({ ok: false, error: 'FORBIDDEN' });
+
+  const baseId = parseBaseId(req);
+  const tableId = parseTableId(req);
+
+  try {
+    await deleteTablePermanently(baseId, tableId);
+    return res.json({ ok: true });
+  } catch (e: any) {
+    if (e?.status) return res.status(e.status).json({ ok: false, error: e.message });
+    return res.status(500).json({ ok: false, error: 'No se pudo eliminar definitivamente la tabla' });
   }
 }

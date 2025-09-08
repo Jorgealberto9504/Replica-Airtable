@@ -67,6 +67,10 @@ model Base {
   // Pública / Privada
   visibility  BaseVisibility  @default(PRIVATE)
 
+  // NUEVO Papelera
+  isTrashed   Boolean         @default(false)   // NUEVO Papelera: activa=false ⇢ en papelera
+  trashedAt   DateTime?                           // NUEVO Papelera: fecha de envío a papelera
+
   // Miembros con rol por base
   members     BaseMember[]
 
@@ -77,8 +81,12 @@ model Base {
   @@index([ownerId])
   @@index([visibility])
 
-  // Novedad Tarea 6.4: evitar nombres duplicados por owner
-  @@unique([ownerId, name])
+  // CAMBIO Papelera: antes @@unique([ownerId, name])
+  @@unique([ownerId, name, isTrashed])           // CAMBIO Papelera: permite duplicados en papelera
+
+  // NUEVO Papelera: índices útiles para consultas/purge
+  @@index([trashedAt])
+  @@index([isTrashed])
 }
 
 // === Membership (user + base + rol por base) ===
@@ -104,8 +112,17 @@ model TableDef {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
+  // NUEVO Papelera
+  isTrashed Boolean   @default(false)            // NUEVO Papelera
+  trashedAt DateTime?                            // NUEVO Papelera
+
   base      Base      @relation(fields: [baseId], references: [id], onDelete: Cascade)
 
-  @@unique([baseId, name]) // No repetir nombre de tabla dentro de la misma base
+  // CAMBIO Papelera: antes @@unique([baseId, name])
+  @@unique([baseId, name, isTrashed])           // CAMBIO Papelera: permite duplicados en papelera
+
   @@index([baseId])
+  // NUEVO Papelera: índices útiles
+  @@index([trashedAt])
+  @@index([isTrashed])
 }
