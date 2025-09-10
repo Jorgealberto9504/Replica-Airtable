@@ -4,10 +4,12 @@ import { Prisma } from '@prisma/client';
 import { getAuthUser } from '../middlewares/auth.middleware.js';
 import {
   createTable,
-  listTablesForBase,          // ← nombre correcto del service
+  listTablesForBase,
+  listTablesNavForBase,   // <-- NUEVO
+  reorderTables,          // <-- NUEVO
   getTableById,
-  updateTable,               // firma: (baseId, tableId, patch)
-  deleteTable,               // firma: (baseId, tableId)
+  updateTable,
+  deleteTable,
   isDuplicateTableNameError,
   // ===== Papelera (owner) =====
   listTrashedTablesForBase,
@@ -15,7 +17,7 @@ import {
   deleteTablePermanently,
   emptyTrashForBase,
   // ===== NUEVO: Papelera GLOBAL (admin) =====
-  listTrashedTablesForAdmin,            // <-- NUEVO
+  listTrashedTablesForAdmin,
 } from '../services/tables.service.js';
 
 // ---------- Schemas (validación de inputs) ----------
@@ -30,6 +32,10 @@ const updateTableSchema = z
   .refine((d) => d.name !== undefined, {
     message: 'Debes enviar al menos un campo a actualizar',
   });
+
+const reorderSchema = z.object({
+  orderedIds: z.array(z.number().int().positive()).min(1),
+});
 
 // ---------- Helpers locales ----------
 function parseBaseId(req: Request): number {
@@ -72,7 +78,7 @@ export async function createTableCtrl(req: Request, res: Response) {
     return res.status(201).json({ ok: true, table });
   } catch (e: any) {
     if (e?.status) {
-      return res.status(e.status).json(e.body ?? { ok: false, error: e.message }); // <-- NUEVO: base en papelera (409), etc.
+      return res.status(e.status).json(e.body ?? { ok: false, error: e.message }); // base en papelera (409), etc.
     }
     if (isDuplicateTableNameError(e)) {
       return res
@@ -102,6 +108,55 @@ export async function listTablesCtrl(req: Request, res: Response) {
     return res
       .status(e?.status ?? 500)
       .json({ ok: false, error: e?.message ?? 'No se pudieron listar las tablas' });
+  }
+}
+
+/**
+ * GET /bases/:baseId/tables/nav
+ * Lista ligera para la barra de tabs: id, name, position.
+ * Requiere: requireAuth + guard('base:view') en ruta.
+ */
+export async function listTablesNavCtrl(req: Request, res: Response) {
+  try {
+    const me = getAuthUser<{ id: number }>(req);
+    if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
+
+    const baseId = parseBaseId(req);
+    const tabs = await listTablesNavForBase(baseId);
+    return res.json({ ok: true, tabs });
+  } catch (e: any) {
+    return res
+      .status(e?.status ?? 500)
+      .json({ ok: false, error: e?.message ?? 'No se pudo obtener la barra de tablas' });
+  }
+}
+
+/**
+ * PATCH /bases/:baseId/tables/reorder
+ * Body: { orderedIds: number[] } (ids de TODAS las tablas activas en el nuevo orden)
+ * Requiere: requireAuth + guard('schema:manage') en ruta.
+ */
+export async function reorderTablesCtrl(req: Request, res: Response) {
+  try {
+    const me = getAuthUser<{ id: number }>(req);
+    if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
+
+    const baseId = parseBaseId(req);
+    const parsed = reorderSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res
+        .status(400)
+        .json({ ok: false, error: parsed.error.issues[0]?.message ?? 'Body inválido' });
+    }
+
+    await reorderTables(baseId, parsed.data.orderedIds);
+    // Devolvemos el nuevo orden para que el front rehidrate sin pedir otra vez:
+    const tabs = await listTablesNavForBase(baseId);
+    return res.json({ ok: true, tabs });
+  } catch (e: any) {
+    return res
+      .status(e?.status ?? 500)
+      .json({ ok: false, error: e?.message ?? 'No se pudo reordenar' });
   }
 }
 
@@ -157,7 +212,7 @@ export async function updateTableCtrl(req: Request, res: Response) {
       return res.status(404).json({ ok: false, error: 'Tabla no encontrada' });
     }
     if (e?.status) {
-      return res.status(e.status).json(e.body ?? { ok: false, error: e.message }); // <-- NUEVO: base/tabla en papelera (409)
+      return res.status(e.status).json(e.body ?? { ok: false, error: e.message }); // base/tabla en papelera (409)
     }
     if (isDuplicateTableNameError(e)) {
       return res
@@ -283,7 +338,7 @@ export async function listTrashedTablesAdminCtrl(req: Request, res: Response) {
 
 /**
  * GET /bases/admin/tables/trash?ownerId=&baseId=
- * <-- NUEVO: Papelera GLOBAL de tablas — SOLO SYSADMIN
+ * Papelera GLOBAL de tablas — SOLO SYSADMIN
  */
 export async function listAllTrashedTablesAdminCtrl(req: Request, res: Response) {
   const me = getAuthUser<{ platformRole: 'USER' | 'SYSADMIN' }>(req);

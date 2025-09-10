@@ -42,19 +42,34 @@ async function ensureBaseActive(baseId: number) {
   }
 }
 
+/* ==========================================
+   NUEVO: util para calcular siguiente posición
+   ========================================== */
+async function getNextPosition(baseId: number): Promise<number> {
+  const agg = await prisma.tableDef.aggregate({
+    where: { baseId, isTrashed: false },
+    _max: { position: true },
+  });
+  const maxPos = agg._max.position ?? 0;
+  return maxPos + 1;
+}
+
 /**
  * Crea una tabla dentro de una base.
  * - Unicidad aplica entre activas (isTrashed = false).
+ * - NUEVO: asigna position consecutiva al final.
  */
 export async function createTable(baseId: number, name: string) {
   await ensureBaseActive(baseId); // <-- NUEVO: bloquear si base está en papelera
   try {
+    const position = await getNextPosition(baseId); // NUEVO
     return await prisma.tableDef.create({
-      data: { baseId, name /* isTrashed=false por defecto */ },
+      data: { baseId, name, position /* isTrashed=false por defecto */ },
       select: {
         id: true,
         baseId: true,
         name: true,
+        position: true,  // NUEVO
         createdAt: true,
         updatedAt: true,
         isTrashed: true,  // Papelera
@@ -69,6 +84,7 @@ export async function createTable(baseId: number, name: string) {
 /**
  * Lista todas las tablas de una base (EXCLUYE papelera).
  * Si la base está en papelera → 409.
+ * Orden: por position (asc) y luego id (asc).
  */
 export async function listTablesForBase(baseId: number) {
   await ensureBaseActive(baseId); // <-- NUEVO
@@ -78,13 +94,36 @@ export async function listTablesForBase(baseId: number) {
       id: true,
       baseId: true,
       name: true,
+      position: true,  // NUEVO
       createdAt: true,
       updatedAt: true,
       isTrashed: true,  // Papelera
       trashedAt: true,  // Papelera
     },
-    orderBy: { id: 'asc' },
+    orderBy: [{ position: 'asc' }, { id: 'asc' }],
   });
+}
+
+/* ==========================================================
+   NUEVO: listado ligero para barra de navegación de tablas
+   ========================================================== */
+/**
+ * Lista mínima para la barra de tabs: id, name, position.
+ * Ordena por position (asc) y luego id (asc).
+ */
+export async function listTablesNavForBase(baseId: number) {
+  await ensureBaseActive(baseId);
+  const rows = await prisma.tableDef.findMany({
+    where: { baseId, isTrashed: false },
+    select: { id: true, name: true, position: true },
+    orderBy: [{ position: 'asc' }, { id: 'asc' }],
+  });
+
+  // Si tienes posiciones nulas por datos antiguos, opcionalmente
+  // puedes asegurar nulls-last en memoria:
+  // rows.sort((a, b) => (a.position ?? 1e9) - (b.position ?? 1e9) || a.id - b.id);
+
+  return rows;
 }
 
 /**
@@ -99,6 +138,7 @@ export async function getTableById(baseId: number, tableId: number) {
       id: true,
       baseId: true,
       name: true,
+      position: true,  // NUEVO
       createdAt: true,
       updatedAt: true,
       isTrashed: true,  // Papelera
@@ -144,6 +184,7 @@ export async function updateTable(
         id: true,
         baseId: true,
         name: true,
+        position: true,  // NUEVO
         createdAt: true,
         updatedAt: true,
         isTrashed: true,  // Papelera
@@ -153,6 +194,60 @@ export async function updateTable(
   } catch (e) {
     rethrowConflictIfDuplicateTable(e);
   }
+}
+
+/* ===========================================
+   NUEVO: Reordenamiento de tablas (drag & drop)
+   =========================================== */
+/**
+ * Reordena TODAS las tablas activas de una base según `orderedIds`.
+ * - Valida que `orderedIds` contenga exactamente los ids activos de esa base.
+ * - Asigna position = índice+1 para cada id.
+ */
+export async function reorderTables(baseId: number, orderedIds: number[]) {
+  await ensureBaseActive(baseId);
+
+  // Traer el conjunto actual de tablas activas
+  const current = await prisma.tableDef.findMany({
+    where: { baseId, isTrashed: false },
+    select: { id: true },
+    orderBy: { id: 'asc' },
+  });
+
+  const currentIds = current.map((t) => t.id);
+  const uniqueOrdered = Array.from(new Set(orderedIds));
+
+  // Validaciones
+  if (uniqueOrdered.length !== orderedIds.length) {
+    const err: any = new Error('orderedIds contiene ids repetidos');
+    err.status = 400;
+    throw err;
+  }
+  if (uniqueOrdered.length !== currentIds.length) {
+    const err: any = new Error('orderedIds no coincide con la cantidad de tablas activas');
+    err.status = 400;
+    throw err;
+  }
+  const currentSet = new Set(currentIds);
+  for (const id of uniqueOrdered) {
+    if (!currentSet.has(id)) {
+      const err: any = new Error(`La tabla ${id} no pertenece a esta base o no está activa`);
+      err.status = 400;
+      throw err;
+    }
+  }
+
+  // Actualizar posiciones en transacción
+  await prisma.$transaction(
+    uniqueOrdered.map((id, idx) =>
+      prisma.tableDef.update({
+        where: { id },
+        data: { position: idx + 1 },
+      })
+    )
+  );
+
+  return { ok: true };
 }
 
 /**
@@ -208,6 +303,7 @@ export async function listTrashedTablesForBase(baseId: number) {
       id: true,
       baseId: true,
       name: true,
+      position: true, // NUEVO (por si el front quiere mostrar orden anterior)
       createdAt: true,
       updatedAt: true,
       isTrashed: true,
@@ -229,6 +325,7 @@ export async function listTrashedTablesForAdmin(params?: { ownerId?: number; bas
       id: true,
       baseId: true,
       name: true,
+      position: true, // NUEVO
       createdAt: true,
       updatedAt: true,
       isTrashed: true,
@@ -264,13 +361,16 @@ export async function restoreTable(baseId: number, tableId: number) {
   }
 
   try {
+    // Al restaurar, si no tiene position, la mandamos al final
+    const newPos = await getNextPosition(baseId);
     return await prisma.tableDef.update({
       where: { id: tableId },
-      data: { isTrashed: false, trashedAt: null }, // Papelera
+      data: { isTrashed: false, trashedAt: null, position: newPos }, // Papelera + posición al final
       select: {
         id: true,
         baseId: true,
         name: true,
+        position: true, // NUEVO
         createdAt: true,
         updatedAt: true,
         isTrashed: true,

@@ -147,16 +147,18 @@ model TableDef {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  // NUEVO Papelera
+  // NUEVO: orden para tabs
+  position  Int       @default(0)
+
+  // Papelera
   isTrashed Boolean   @default(false)
   trashedAt DateTime?
 
   base      Base      @relation(fields: [baseId], references: [id], onDelete: Cascade)
 
-  // CAMBIO Papelera: antes @@unique([baseId, name])
-  @@unique([baseId, name, isTrashed]) // permite duplicados en papelera
-
+  @@unique([baseId, name, isTrashed])
   @@index([baseId])
-  @@index([trashedAt])  // NUEVO Papelera
-  @@index([isTrashed])  // NUEVO Papelera
+  @@index([trashedAt])
+  @@index([isTrashed])
+  @@index([baseId, position]) // útil para ordenar por base
 }

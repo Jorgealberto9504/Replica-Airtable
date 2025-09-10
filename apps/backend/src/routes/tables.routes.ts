@@ -1,3 +1,4 @@
+// apps/backend/src/routes/tables.routes.ts
 import { Router } from 'express';
 import { requireAuth } from '../middlewares/auth.middleware.js';
 import { guard, guardGlobal } from '../permissions/guard.js'; // <-- NUEVO: guardGlobal para rutas ADMIN
@@ -17,6 +18,9 @@ import {
   listAllTrashedTablesAdminCtrl,      // <-- NUEVO: GLOBAL
   restoreTableAdminCtrl,
   deleteTablePermanentAdminCtrl,
+  // ===== NAV / REORDER =====
+  listTablesNavCtrl,
+  reorderTablesCtrl,
 } from '../controllers/tables.controller.js';
 
 const router = Router();
@@ -92,6 +96,34 @@ router.post('/:baseId/tables', requireAuth, guard('schema:manage'), createTableC
 // GET /bases/:baseId/tables
 // LISTAR TABLAS DE UNA BASE
 router.get('/:baseId/tables', requireAuth, guard('base:view'), listTablesCtrl);
+
+
+
+
+
+
+
+
+
+
+//PROBAR<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+// GET /bases/:baseId/tables/nav
+// LISTA LIGERA PARA BARRA DE TABS
+router.get('/:baseId/tables/nav', requireAuth, guard('base:view'), listTablesNavCtrl);
+
+// PATCH /bases/:baseId/tables/reorder
+// REORDENAR TABS POR DRAG & DROP {"orderedIds": [3,2,1]
+
+router.patch('/:baseId/tables/reorder', requireAuth, guard('schema:manage'), reorderTablesCtrl);
+
+
+
+
+
+
+
+
 
 // GET /bases/:baseId/tables/:tableId
 // VER UNA TABLA POR ID
