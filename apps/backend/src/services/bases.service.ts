@@ -1,3 +1,4 @@
+// apps/backend/src/services/bases.service.ts
 import { prisma } from './db.js';
 import type { BaseVisibility } from '@prisma/client';
 import { Prisma } from '@prisma/client'; // NUEVO T6.4: detectar P2002 (violación de unique)
@@ -18,6 +19,35 @@ function rethrowConflictIfDuplicateBase(e: unknown) {
   throw e;
 }
 
+/* ==================================================================
+   === NUEVO WORKSPACES: helpers internos para validar workspace  ===
+   ================================================================== */
+
+/**
+ * Verifica que el workspace exista, NO esté en papelera y pertenezca al owner dado.
+ * Lanza 404 si no existe o está en papelera; 403 si el owner no coincide.
+ */
+async function assertWorkspaceActiveAndOwned(workspaceId: number, ownerId: number) {
+  const ws = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { id: true, ownerId: true, isTrashed: true },
+  });
+  if (!ws || ws.isTrashed) {
+    const err: any = new Error('Workspace no encontrado');
+    err.status = 404;
+    throw err;
+  }
+  if (ws.ownerId !== ownerId) {
+    const err: any = new Error('FORBIDDEN: El workspace pertenece a otro owner');
+    err.status = 403;
+    throw err;
+  }
+  return ws;
+}
+
+/* ===========================
+   CREAR BASE (general)
+   =========================== */
 export async function createBase(input: {
   ownerId: number;
   name: string;
@@ -47,6 +77,49 @@ export async function createBase(input: {
   }
 }
 
+/* ================================================================
+   === NUEVO WORKSPACES: crear base dentro de un workspace dado ===
+   ================================================================ */
+/**
+ * Crea una base **dentro de un workspace**.
+ * Requisitos:
+ *  - El workspace debe existir, no estar en papelera y pertenecer al mismo owner.
+ *  - Unicidad a nivel owner sigue vigente (ownerId, name, isTrashed=false).
+ */
+export async function createBaseInWorkspace(input: {
+  ownerId: number;
+  workspaceId: number;
+  name: string;
+  visibility: BaseVisibility;
+}) {
+  // Validar workspace (propiedad + activo)
+  await assertWorkspaceActiveAndOwned(input.workspaceId, input.ownerId);
+
+  try {
+    return await prisma.base.create({
+      data: {
+        ownerId: input.ownerId,
+        workspaceId: input.workspaceId,         // === NUEVO WORKSPACES ===
+        name: input.name,
+        visibility: input.visibility,
+      },
+      select: {
+        id: true,
+        name: true,
+        visibility: true,
+        ownerId: true,
+        workspaceId: true,                       // === NUEVO WORKSPACES ===
+        createdAt: true,
+        updatedAt: true,
+        isTrashed: true,
+        trashedAt: true,
+      },
+    });
+  } catch (e) {
+    rethrowConflictIfDuplicateBase(e);
+  }
+}
+
 /**
  * Lista todas las bases a las que el usuario TIENE acceso:
  * - Públicas (visibility=PUBLIC)
@@ -69,6 +142,7 @@ export async function listAccessibleBasesForUser(userId: number) {
       name: true,
       visibility: true,
       ownerId: true,
+      workspaceId: true,            // === NUEVO WORKSPACES ===
       createdAt: true,
       updatedAt: true,
       isTrashed: true,  // Papelera
@@ -90,6 +164,53 @@ export async function listAccessibleBasesForUser(userId: number) {
   }));
 }
 
+/* ===========================================================================
+   === NUEVO WORKSPACES: listar bases activas por workspace (con permisos) ===
+   ===========================================================================
+   - Si isSysadmin=true: devuelve TODAS las bases activas del workspace.
+   - Si isSysadmin=false: aplica la misma lógica de accesibilidad que listAccessibleBasesForUser
+     pero filtrando por workspaceId.
+*/
+export async function listBasesForWorkspace(
+  workspaceId: number,
+  viewerUserId: number,
+  opts?: { isSysadmin?: boolean }
+) {
+  const isSysadmin = !!opts?.isSysadmin;
+
+  // 👇 Tipamos explícitamente como BaseWhereInput
+  const where: Prisma.BaseWhereInput = isSysadmin
+    ? {
+        workspaceId,
+        isTrashed: false,
+      }
+    : {
+        workspaceId,
+        isTrashed: false,
+        OR: [
+          { visibility: 'PUBLIC' },
+          { ownerId: viewerUserId },
+          { members: { some: { userId: viewerUserId } } },
+        ],
+      };
+
+  return prisma.base.findMany({
+    where,
+    select: {
+      id: true,
+      name: true,
+      visibility: true,
+      ownerId: true,
+      workspaceId: true,
+      createdAt: true,
+      updatedAt: true,
+      isTrashed: true,
+      trashedAt: true,
+    },
+    orderBy: { id: 'asc' },
+  });
+}
+
 /**
  * SYSADMIN: lista TODAS las bases (públicas y privadas).
  * EXCLUYE papelera (la papelera tendrá su endpoint propio).
@@ -102,6 +223,7 @@ export async function listAllBasesForSysadmin(viewerUserId: number) {
       name: true,
       visibility: true,
       ownerId: true,
+      workspaceId: true,           // === NUEVO WORKSPACES ===
       createdAt: true,
       updatedAt: true,
       isTrashed: true,  // Papelera
@@ -132,6 +254,7 @@ export async function getBaseById(baseId: number) {
       name: true,
       visibility: true,
       ownerId: true,
+      workspaceId: true,           // === NUEVO WORKSPACES ===
       createdAt: true,
       updatedAt: true,
       isTrashed: true,  // Papelera
@@ -173,6 +296,7 @@ export async function updateBase(
         name: true,
         visibility: true,
         ownerId: true,
+        workspaceId: true,          // === NUEVO WORKSPACES ===
         createdAt: true,
         updatedAt: true,
         isTrashed: true,  // Papelera
@@ -182,6 +306,77 @@ export async function updateBase(
   } catch (e) {
     rethrowConflictIfDuplicateBase(e);
   }
+}
+
+/* =============================================================================
+   === NUEVO WORKSPACES: mover base entre workspaces (mismo owner) ============
+   =============================================================================
+   - Solo permitido si:
+     * actor.isSysadmin = true, y ADEMÁS el workspace destino pertenece al mismo owner
+       (no transferimos ownership aquí), o
+     * actor es el owner y el workspace destino también es suyo.
+   - No permite mover una base en papelera (estado inválido).
+*/
+export async function moveBaseToWorkspace(
+  baseId: number,
+  newWorkspaceId: number,
+  actor: { userId: number; isSysadmin: boolean }
+) {
+  const base = await prisma.base.findUnique({
+    where: { id: baseId },
+    select: { id: true, ownerId: true, isTrashed: true },
+  });
+  if (!base) {
+    const err: any = new Error('Base no encontrada');
+    err.status = 404;
+    throw err;
+  }
+  if (base.isTrashed) {
+    const err: any = new Error('No puedes mover una base en la papelera. Restaúrala primero.');
+    err.status = 409;
+    throw err;
+  }
+
+  // Validar workspace destino y propiedad
+  const ws = await prisma.workspace.findUnique({
+    where: { id: newWorkspaceId },
+    select: { id: true, ownerId: true, isTrashed: true },
+  });
+  if (!ws || ws.isTrashed) {
+    const err: any = new Error('Workspace destino no encontrado');
+    err.status = 404;
+    throw err;
+  }
+
+  // En esta versión NO transferimos ownership: debe coincidir el owner.
+  if (ws.ownerId !== base.ownerId) {
+    const err: any = new Error('No puedes mover la base a un workspace de otro owner');
+    err.status = 409;
+    throw err;
+  }
+
+  // Autorización básica (propietario o sysadmin)
+  if (!actor.isSysadmin && actor.userId !== base.ownerId) {
+    const err: any = new Error('FORBIDDEN');
+    err.status = 403;
+    throw err;
+  }
+
+  return prisma.base.update({
+    where: { id: baseId },
+    data: { workspaceId: newWorkspaceId },
+    select: {
+      id: true,
+      name: true,
+      visibility: true,
+      ownerId: true,
+      workspaceId: true,
+      createdAt: true,
+      updatedAt: true,
+      isTrashed: true,
+      trashedAt: true,
+    },
+  });
 }
 
 /** SOFT DELETE: mover a papelera (no borramos) + cascada a tablas */
@@ -304,6 +499,7 @@ export async function restoreBase(
         name: true,
         visibility: true,
         ownerId: true,
+        workspaceId: true, // === NUEVO WORKSPACES ===
         createdAt: true,
         updatedAt: true,
         isTrashed: true,
@@ -377,3 +573,4 @@ export async function purgeTrashedBasesOlderThan(days: number = 30) {
     },
   });
 }
+

@@ -10,6 +10,8 @@ import usersRouter from './routes/users.routes.js';
 import membersRouter from './routes/members.routes.js';
 import basesRouter from './routes/bases.routes.js'; 
 import tablesRouter from './routes/tables.routes.js';
+import workspacesRouter from './routes/workspaces.routes.js';
+
 
 
 const app = express();
@@ -31,5 +33,6 @@ app.use('/users', usersRouter);
 app.use('/bases', membersRouter);
 app.use('/bases', basesRouter);
 app.use('/bases', tablesRouter);
+app.use('/workspaces', workspacesRouter);
 
 export default app;

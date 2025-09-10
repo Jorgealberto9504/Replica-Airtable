@@ -51,6 +51,34 @@ model User {
   // Relaciones
   ownedBases         Base[]        @relation("BaseOwner")
   baseMembers        BaseMember[]
+
+  // === NUEVO Workspaces: relación de propiedad de workspaces ===
+  ownedWorkspaces    Workspace[]   @relation("WorkspaceOwner") // NUEVO
+}
+
+// === NUEVO: Workspace (agrupa Bases) ===
+model Workspace {
+  id         Int       @id @default(autoincrement())
+  name       String
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  // Propietario / dueño del workspace
+  ownerId    Int
+  owner      User      @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+
+  // Papelera (soft delete)
+  isTrashed  Boolean   @default(false)   // NUEVO Papelera
+  trashedAt  DateTime?                   // NUEVO Papelera
+
+  // Bases dentro del workspace
+  bases      Base[]
+
+  // Índices y unicidad de Workspace
+  @@index([ownerId])
+  @@index([isTrashed])        // NUEVO Papelera
+  @@index([trashedAt])        // NUEVO Papelera
+  @@unique([ownerId, name, isTrashed]) // Nombre único por owner mientras esté activo
 }
 
 // === Base (espacio tipo Airtable) ===
@@ -60,7 +88,13 @@ model Base {
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
-  // Propietario / dueño
+  // === NUEVO Workspaces: pertenencia a un workspace ===
+  // FASE 1: lo dejamos opcional para no romper datos y poder migrar.
+  // Luego en FASE 2 lo haremos requerido y moveremos unicidad a workspace.
+  workspaceId Int?            // NUEVO (FASE 1: opcional)
+  workspace   Workspace?      @relation(fields: [workspaceId], references: [id], onDelete: Cascade) // NUEVO
+
+  // Propietario / dueño de la base (se mantiene)
   ownerId     Int
   owner       User            @relation("BaseOwner", fields: [ownerId], references: [id])
 
@@ -68,8 +102,8 @@ model Base {
   visibility  BaseVisibility  @default(PRIVATE)
 
   // NUEVO Papelera
-  isTrashed   Boolean         @default(false)   // NUEVO Papelera: activa=false ⇢ en papelera
-  trashedAt   DateTime?                           // NUEVO Papelera: fecha de envío a papelera
+  isTrashed   Boolean         @default(false)   // activa=false ⇢ en papelera
+  trashedAt   DateTime?                           // fecha de envío a papelera
 
   // Miembros con rol por base
   members     BaseMember[]
@@ -77,16 +111,17 @@ model Base {
   // Tablas dentro de la base
   tables      TableDef[]
 
-  // Índices y unicidad
+  // Índices y unicidad (FASE 1 conservamos la actual para no romper)
   @@index([ownerId])
   @@index([visibility])
+  @@index([workspaceId])      // NUEVO (para listar por workspace)
+  @@index([trashedAt])        // NUEVO Papelera
+  @@index([isTrashed])        // NUEVO Papelera
 
   // CAMBIO Papelera: antes @@unique([ownerId, name])
-  @@unique([ownerId, name, isTrashed])           // CAMBIO Papelera: permite duplicados en papelera
-
-  // NUEVO Papelera: índices útiles para consultas/purge
-  @@index([trashedAt])
-  @@index([isTrashed])
+  @@unique([ownerId, name, isTrashed])           // (FASE 1) Se mantiene
+  // ⬇️ FASE 2: cuando terminemos la migración de datos:
+  // @@unique([workspaceId, name, isTrashed])    // (FASE 2) Unicidad por workspace
 }
 
 // === Membership (user + base + rol por base) ===
@@ -113,16 +148,15 @@ model TableDef {
   updatedAt DateTime  @updatedAt
 
   // NUEVO Papelera
-  isTrashed Boolean   @default(false)            // NUEVO Papelera
-  trashedAt DateTime?                            // NUEVO Papelera
+  isTrashed Boolean   @default(false)
+  trashedAt DateTime?
 
   base      Base      @relation(fields: [baseId], references: [id], onDelete: Cascade)
 
   // CAMBIO Papelera: antes @@unique([baseId, name])
-  @@unique([baseId, name, isTrashed])           // CAMBIO Papelera: permite duplicados en papelera
+  @@unique([baseId, name, isTrashed]) // permite duplicados en papelera
 
   @@index([baseId])
-  // NUEVO Papelera: índices útiles
-  @@index([trashedAt])
-  @@index([isTrashed])
+  @@index([trashedAt])  // NUEVO Papelera
+  @@index([isTrashed])  // NUEVO Papelera
 }

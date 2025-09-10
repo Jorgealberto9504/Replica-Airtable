@@ -3,25 +3,31 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { getAuthUser } from '../middlewares/auth.middleware.js';
 import {
-  createBase,
+  // === WORKSPACES → BASES ===
+  createBaseInWorkspace,
+  listBasesForWorkspace,
+  moveBaseToWorkspace,
+
+  // === BASES existentes ===
   listAccessibleBasesForUser,
-  listAllBasesForSysadmin,   // <-- existente
+  listAllBasesForSysadmin,   // SYSADMIN: lista TODAS (excluye papelera)
   getBaseById,
   updateBase,
   deleteBase,
+
   // ===== Papelera (owner) =====
   listTrashedBasesForOwner,
   restoreBase,
   deleteBasePermanently,
   emptyTrashForOwner,
   purgeTrashedBasesOlderThan,   // PURGE (admin)
-  // ===== NUEVO ADMIN GLOBAL =====
-  listTrashedBasesForAdmin,     // <-- NUEVO: ya lo tienes en services, lo importamos
+
+  // ===== ADMIN GLOBAL =====
+  listTrashedBasesForAdmin,
 } from '../services/bases.service.js';
-// PURGE (admin): también purgamos tablas desde aquí
 import { purgeTrashedTablesOlderThan } from '../services/tables.service.js';
 
-// Schemas
+// ---------- Schemas ----------
 const createBaseSchema = z.object({
   name: z.string().min(1, 'name requerido'),
   visibility: z.enum(['PUBLIC', 'PRIVATE']).optional(),
@@ -36,29 +42,121 @@ const updateBaseSchema = z
     message: 'Debes enviar al menos un campo a actualizar',
   });
 
-export async function createBaseCtrl(req: Request, res: Response) {
-  const me = getAuthUser<{ id: number }>(req);
-  if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
-
-  const parsed = createBaseSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ ok: false, error: parsed.error.issues[0]?.message ?? 'Body inválido' });
+// ---------- Helpers ----------
+function parseBaseId(req: Request): number {
+  const baseId = Number(req.params.baseId);
+  if (!Number.isInteger(baseId) || baseId <= 0) {
+    throw Object.assign(new Error('baseId inválido'), { status: 400 });
   }
+  return baseId;
+}
 
+function parseWorkspaceId(req: Request): number {
+  const workspaceId = Number(req.params.workspaceId);
+  if (!Number.isInteger(workspaceId) || workspaceId <= 0) {
+    throw Object.assign(new Error('workspaceId inválido'), { status: 400 });
+  }
+  return workspaceId;
+}
+
+/* ===========================
+   WORKSPACES → BASES (nuevo)
+   =========================== */
+
+/**
+ * POST /workspaces/:workspaceId/bases
+ * CREAR BASE DENTRO DE UN WORKSPACE
+ * Requiere: requireAuth + guardGlobal('bases:create') en ruta.
+ * - Valida que el workspace exista, no esté en papelera y pertenezca al owner.
+ */
+export async function createBaseInWorkspaceCtrl(req: Request, res: Response) {
   try {
-    const base = await createBase({
+    const me = getAuthUser<{ id: number }>(req);
+    if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
+
+    const workspaceId = parseWorkspaceId(req);
+
+    const parsed = createBaseSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res
+        .status(400)
+        .json({ ok: false, error: parsed.error.issues[0]?.message ?? 'Body inválido' });
+    }
+
+    const base = await createBaseInWorkspace({
       ownerId: me.id,
+      workspaceId,
       name: parsed.data.name,
       visibility: parsed.data.visibility ?? 'PRIVATE',
     });
+
     return res.status(201).json({ ok: true, base });
   } catch (err: any) {
     if (err.status) return res.status(err.status).json(err.body ?? { ok: false, error: err.message });
-    return res.status(500).json({ ok: false, error: 'No se pudo crear la base' });
+    return res.status(500).json({ ok: false, error: 'No se pudo crear la base en el workspace' });
   }
 }
+
+/**
+ * GET /workspaces/:workspaceId/bases
+ * LISTAR BASES ACTIVAS DE UN WORKSPACE
+ * Requiere: requireAuth
+ * - SYSADMIN ve todas (excluye papelera).
+ * - Usuario ve solo las accesibles según reglas (excluye papelera).
+ */
+export async function listBasesForWorkspaceCtrl(req: Request, res: Response) {
+  try {
+    const me = getAuthUser<{ id: number; platformRole: 'USER' | 'SYSADMIN' }>(req);
+    if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
+
+    const workspaceId = parseWorkspaceId(req);
+
+    const bases = await listBasesForWorkspace(workspaceId, me.id, {
+      isSysadmin: me.platformRole === 'SYSADMIN',
+    });
+
+    return res.json({ ok: true, bases });
+  } catch (err: any) {
+    return res
+      .status(err?.status ?? 500)
+      .json({ ok: false, error: err?.message ?? 'No se pudieron listar las bases del workspace' });
+  }
+}
+
+/**
+ * PATCH /bases/:baseId/move-to-workspace   { newWorkspaceId }
+ * MOVER UNA BASE A OTRO WORKSPACE (MISMO OWNER)
+ * Requiere: requireAuth + guard('schema:manage') en ruta.
+ * - Permite SYSADMIN o el owner; el workspace destino debe ser del mismo owner y estar activo.
+ */
+export async function moveBaseToWorkspaceCtrl(req: Request, res: Response) {
+  try {
+    const me = getAuthUser<{ id: number; platformRole: 'USER' | 'SYSADMIN' }>(req);
+    if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
+
+    const baseId = parseBaseId(req);
+
+    const bodySchema = z.object({ newWorkspaceId: z.number().int().positive() });
+    const parsed = bodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: 'newWorkspaceId inválido' });
+    }
+
+    const base = await moveBaseToWorkspace(baseId, parsed.data.newWorkspaceId, {
+      userId: me.id,
+      isSysadmin: me.platformRole === 'SYSADMIN',
+    });
+
+    return res.json({ ok: true, base });
+  } catch (err: any) {
+    return res.status(err?.status ?? 500).json({ ok: false, error: err?.message ?? 'No se pudo mover la base' });
+  }
+}
+
+/* ===========================
+   CRUD BASES (activas)
+   =========================== */
+// OJO: ya no existe POST /bases — se reemplazó por POST /workspaces/:workspaceId/bases
 
 export async function listMyBasesCtrl(req: Request, res: Response) {
   const me = getAuthUser<{ id: number; platformRole: 'USER' | 'SYSADMIN' }>(req);
@@ -73,22 +171,14 @@ export async function listMyBasesCtrl(req: Request, res: Response) {
 }
 
 export async function getBaseCtrl(req: Request, res: Response) {
-  const baseId = Number(req.params.baseId);
-  if (!Number.isInteger(baseId) || baseId <= 0) {
-    return res.status(400).json({ ok: false, error: 'baseId inválido' });
-  }
-
-  const base = await getBaseById(baseId); // ya excluye papelera
+  const baseId = parseBaseId(req);
+  const base = await getBaseById(baseId); // excluye papelera
   if (!base) return res.status(404).json({ ok: false, error: 'Base no encontrada' });
-
   return res.json({ ok: true, base });
 }
 
 export async function updateBaseCtrl(req: Request, res: Response) {
-  const baseId = Number(req.params.baseId);
-  if (!Number.isInteger(baseId) || baseId <= 0) {
-    return res.status(400).json({ ok: false, error: 'baseId inválido' });
-  }
+  const baseId = parseBaseId(req);
 
   const parsed = updateBaseSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -107,12 +197,8 @@ export async function updateBaseCtrl(req: Request, res: Response) {
 }
 
 export async function deleteBaseCtrl(req: Request, res: Response) {
-  const baseId = Number(req.params.baseId);
-  if (!Number.isInteger(baseId) || baseId <= 0) {
-    return res.status(400).json({ ok: false, error: 'baseId inválido' });
-  }
-
-  await deleteBase(baseId); // SOFT DELETE (papelera)
+  const baseId = parseBaseId(req);
+  await deleteBase(baseId); // SOFT DELETE (papelera + cascada a tablas)
   return res.json({ ok: true });
 }
 
@@ -132,10 +218,7 @@ export async function restoreBaseCtrl(req: Request, res: Response) {
   const me = getAuthUser<{ id: number }>(req);
   if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
 
-  const baseId = Number(req.params.baseId);
-  if (!Number.isInteger(baseId) || baseId <= 0) {
-    return res.status(400).json({ ok: false, error: 'baseId inválido' });
-  }
+  const baseId = parseBaseId(req);
 
   try {
     const base = await restoreBase(baseId, me.id);
@@ -150,10 +233,7 @@ export async function deleteBasePermanentCtrl(req: Request, res: Response) {
   const me = getAuthUser<{ id: number }>(req);
   if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
 
-  const baseId = Number(req.params.baseId);
-  if (!Number.isInteger(baseId) || baseId <= 0) {
-    return res.status(400).json({ ok: false, error: 'baseId inválido' });
-  }
+  const baseId = parseBaseId(req);
 
   try {
     await deleteBasePermanently(baseId, me.id);
@@ -194,7 +274,7 @@ export async function purgeTrashCtrl(req: Request, res: Response) {
 /* ===========================
    ===== NUEVO ADMIN =========
    =========================== */
-/** GET /bases/admin/trash?ownerId= — Listar papelera global de bases (SOLO SYSADMIN) */
+
 export async function listAllTrashedBasesCtrl(req: Request, res: Response) {
   const me = getAuthUser<{ platformRole: 'USER' | 'SYSADMIN' }>(req);
   if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
@@ -207,12 +287,10 @@ export async function listAllTrashedBasesCtrl(req: Request, res: Response) {
     return res.status(400).json({ ok: false, error: 'ownerId inválido' });
   }
 
-  // usamos tu service existente:
-  const bases = await listTrashedBasesForAdmin({ ownerId }); // <-- USA TU FUNCIÓN
+  const bases = await listTrashedBasesForAdmin({ ownerId });
   return res.json({ ok: true, bases });
 }
 
-/** POST /bases/admin/:baseId/restore — Restaurar base desde papelera (SOLO SYSADMIN) */
 export async function restoreBaseAdminCtrl(req: Request, res: Response) {
   const me = getAuthUser<{ id: number; platformRole: 'USER' | 'SYSADMIN' }>(req);
   if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
@@ -220,13 +298,9 @@ export async function restoreBaseAdminCtrl(req: Request, res: Response) {
     return res.status(403).json({ ok: false, error: 'FORBIDDEN' });
   }
 
-  const baseId = Number(req.params.baseId);
-  if (!Number.isInteger(baseId) || baseId <= 0) {
-    return res.status(400).json({ ok: false, error: 'baseId inválido' });
-  }
+  const baseId = parseBaseId(req);
 
   try {
-    // Usamos la sobrecarga que permite SYSADMIN
     const base = await restoreBase(baseId, { userId: me.id, isSysadmin: true });
     return res.json({ ok: true, base });
   } catch (err: any) {
@@ -235,7 +309,6 @@ export async function restoreBaseAdminCtrl(req: Request, res: Response) {
   }
 }
 
-/** DELETE /bases/admin/:baseId/permanent — Borrado definitivo (SOLO SYSADMIN) */
 export async function deleteBasePermanentAdminCtrl(req: Request, res: Response) {
   const me = getAuthUser<{ id: number; platformRole: 'USER' | 'SYSADMIN' }>(req);
   if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
@@ -243,13 +316,9 @@ export async function deleteBasePermanentAdminCtrl(req: Request, res: Response) 
     return res.status(403).json({ ok: false, error: 'FORBIDDEN' });
   }
 
-  const baseId = Number(req.params.baseId);
-  if (!Number.isInteger(baseId) || baseId <= 0) {
-    return res.status(400).json({ ok: false, error: 'baseId inválido' });
-  }
+  const baseId = parseBaseId(req);
 
   try {
-    // Usamos la sobrecarga que permite SYSADMIN
     await deleteBasePermanently(baseId, { userId: me.id, isSysadmin: true });
     return res.json({ ok: true });
   } catch (err: any) {
