@@ -54,6 +54,29 @@ async function getNextPosition(baseId: number): Promise<number> {
   return maxPos + 1;
 }
 
+/* ==========================================
+   NUEVO T6.9: helpers de resolución/metadata
+   ========================================== */
+
+/** Devuelve el id de la primera tabla activa por `position` (o null si no hay). */
+export async function getDefaultTableIdForBase(baseId: number): Promise<number | null> {
+  await ensureBaseActive(baseId);
+  const row = await prisma.tableDef.findFirst({
+    where: { baseId, isTrashed: false },
+    select: { id: true },
+    orderBy: [{ position: 'asc' }, { id: 'asc' }],
+  });
+  return row?.id ?? null;
+}
+
+/** Cuenta tablas activas (no papelera) dentro de la base. */
+export async function countActiveTablesForBase(baseId: number): Promise<number> {
+  await ensureBaseActive(baseId);
+  return prisma.tableDef.count({
+    where: { baseId, isTrashed: false },
+  });
+}
+
 /**
  * Crea una tabla dentro de una base.
  * - Unicidad aplica entre activas (isTrashed = false).
@@ -118,10 +141,6 @@ export async function listTablesNavForBase(baseId: number) {
     select: { id: true, name: true, position: true },
     orderBy: [{ position: 'asc' }, { id: 'asc' }],
   });
-
-  // Si tienes posiciones nulas por datos antiguos, opcionalmente
-  // puedes asegurar nulls-last en memoria:
-  // rows.sort((a, b) => (a.position ?? 1e9) - (b.position ?? 1e9) || a.id - b.id);
 
   return rows;
 }
@@ -313,7 +332,7 @@ export async function listTrashedTablesForBase(baseId: number) {
   });
 }
 
-/** <-- NUEVO: Papelera GLOBAL de tablas (SYSADMIN) */
+/** Papelera GLOBAL de tablas (SYSADMIN) */
 export async function listTrashedTablesForAdmin(params?: { ownerId?: number; baseId?: number }) {
   return prisma.tableDef.findMany({
     where: {

@@ -1,4 +1,3 @@
-// apps/backend/src/controllers/bases.controller.ts
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { getAuthUser } from '../middlewares/auth.middleware.js';
@@ -25,7 +24,11 @@ import {
   // ===== ADMIN GLOBAL =====
   listTrashedBasesForAdmin,
 } from '../services/bases.service.js';
-import { purgeTrashedTablesOlderThan } from '../services/tables.service.js';
+import {
+  purgeTrashedTablesOlderThan,
+  getDefaultTableIdForBase,
+  countActiveTablesForBase,
+} from '../services/tables.service.js';
 
 // ---------- Schemas ----------
 const createBaseSchema = z.object({
@@ -158,16 +161,36 @@ export async function moveBaseToWorkspaceCtrl(req: Request, res: Response) {
    =========================== */
 // OJO: ya no existe POST /bases — se reemplazó por POST /workspaces/:workspaceId/bases
 
+/**
+ * GET /bases
+ * Lista bases accesibles con soporte de búsqueda/paginación.
+ * - SYSADMIN: todas (excluye papelera)
+ * - USER: accesibles para el usuario (excluye papelera)
+ * Query: page, pageSize, q
+ */
 export async function listMyBasesCtrl(req: Request, res: Response) {
   const me = getAuthUser<{ id: number; platformRole: 'USER' | 'SYSADMIN' }>(req);
   if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
 
-  const bases =
-    me.platformRole === 'SYSADMIN'
-      ? await listAllBasesForSysadmin(me.id)   // SYSADMIN ve TODAS (excluye papelera)
-      : await listAccessibleBasesForUser(me.id); // excluye papelera
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const rawPageSize = Number(req.query.pageSize) || 12;
+  const pageSize = Math.min(100, Math.max(1, rawPageSize));
+  const q = String(req.query.q ?? '').trim().toLowerCase();
 
-  return res.json({ ok: true, bases });
+  const all =
+    me.platformRole === 'SYSADMIN'
+      ? await listAllBasesForSysadmin(me.id)
+      : await listAccessibleBasesForUser(me.id);
+
+  const filtered = q
+    ? all.filter((b: any) => (b.name ?? '').toString().toLowerCase().includes(q))
+    : all;
+
+  const total = filtered.length;
+  const start = (page - 1) * pageSize;
+  const slice = filtered.slice(start, start + pageSize);
+
+  return res.json({ ok: true, bases: slice, total, page, pageSize });
 }
 
 export async function getBaseCtrl(req: Request, res: Response) {
@@ -175,6 +198,43 @@ export async function getBaseCtrl(req: Request, res: Response) {
   const base = await getBaseById(baseId); // excluye papelera
   if (!base) return res.status(404).json({ ok: false, error: 'Base no encontrada' });
   return res.json({ ok: true, base });
+}
+
+/**
+ * GET /bases/:baseId/resolve
+ * Devuelve la base, el id de la tabla por defecto (primera por position) y metadatos para el grid.
+ */
+export async function resolveBaseCtrl(req: Request, res: Response) {
+  try {
+    const baseId = parseBaseId(req);
+
+    const base = await getBaseById(baseId); // ya excluye papelera
+    if (!base) return res.status(404).json({ ok: false, error: 'Base no encontrada' });
+
+    const [defaultTableId, totalTables] = await Promise.all([
+      getDefaultTableIdForBase(baseId),        // null si no hay tablas activas
+      countActiveTablesForBase(baseId),        // número de tablas activas
+    ]);
+
+    return res.json({
+  ok: true,
+  base,
+  defaultTableId, // null si no hay tablas
+  gridMeta: {
+    totalTables,
+    // Stub ampliado: listo para cuando agregues columnas reales
+    columns: [] as Array<{ id: number; name: string; type: string; width?: number }>,
+    primaryColumnId: null as number | null,
+    defaultSort: null as null | { columnId: number; direction: 'asc' | 'desc' },
+    rowHeight: 'default' as 'default' | 'compact' | 'tall',
+    version: 1,
+  },
+});
+  } catch (err: any) {
+    return res
+      .status(err?.status ?? 500)
+      .json({ ok: false, error: err?.message ?? 'No se pudo resolver la base' });
+  }
 }
 
 export async function updateBaseCtrl(req: Request, res: Response) {

@@ -1,4 +1,3 @@
-// apps/backend/src/routes/bases.routes.ts
 import { Router } from 'express';
 import { requireAuth } from '../middlewares/auth.middleware.js';
 import { guard, guardGlobal } from '../permissions/guard.js';
@@ -20,6 +19,8 @@ import {
   listAllTrashedBasesCtrl,
   restoreBaseAdminCtrl,
   deleteBasePermanentAdminCtrl,
+  // RESOLVE (default table + meta)
+  resolveBaseCtrl,
 } from '../controllers/bases.controller.js';
 
 const router = Router();
@@ -89,8 +90,12 @@ router.delete('/:baseId/permanent', requireAuth, guard('base:delete'), deleteBas
    =========================== */
 
 // GET /bases
-// LISTAR MIS BASES (EXCLUYE PAPELERA)
+// LISTAR MIS BASES (EXCLUYE PAPELERA) — con búsqueda y paginación
 router.get('/', requireAuth, listMyBasesCtrl);
+
+// GET /bases/:baseId/resolve
+// RESOLVER TABLA POR DEFECTO + METADATOS (grid)
+router.get('/:baseId/resolve', requireAuth, guard('base:view'), resolveBaseCtrl);
 
 // GET /bases/:baseId
 // VER UNA BASE POR ID (EXCLUYE PAPELERA)

@@ -1,4 +1,3 @@
-// apps/backend/src/services/bases.service.ts
 import { prisma } from './db.js';
 import type { BaseVisibility } from '@prisma/client';
 import { Prisma } from '@prisma/client'; // NUEVO T6.4: detectar P2002 (violación de unique)
@@ -59,7 +58,6 @@ export async function createBase(input: {
         ownerId: input.ownerId,
         name: input.name,
         visibility: input.visibility,
-        // Papelera: isTrashed=false por defecto (definido en schema)
       },
       select: {
         id: true,
@@ -80,19 +78,12 @@ export async function createBase(input: {
 /* ================================================================
    === NUEVO WORKSPACES: crear base dentro de un workspace dado ===
    ================================================================ */
-/**
- * Crea una base **dentro de un workspace**.
- * Requisitos:
- *  - El workspace debe existir, no estar en papelera y pertenecer al mismo owner.
- *  - Unicidad a nivel owner sigue vigente (ownerId, name, isTrashed=false).
- */
 export async function createBaseInWorkspace(input: {
   ownerId: number;
   workspaceId: number;
   name: string;
   visibility: BaseVisibility;
 }) {
-  // Validar workspace (propiedad + activo)
   await assertWorkspaceActiveAndOwned(input.workspaceId, input.ownerId);
 
   try {
@@ -130,7 +121,7 @@ export async function createBaseInWorkspace(input: {
 export async function listAccessibleBasesForUser(userId: number) {
   const bases = await prisma.base.findMany({
     where: {
-      isTrashed: false, // Papelera: excluir papelera
+      isTrashed: false,
       OR: [
         { visibility: 'PUBLIC' },
         { ownerId: userId },
@@ -142,11 +133,11 @@ export async function listAccessibleBasesForUser(userId: number) {
       name: true,
       visibility: true,
       ownerId: true,
-      workspaceId: true,            // === NUEVO WORKSPACES ===
+      workspaceId: true,
       createdAt: true,
       updatedAt: true,
-      isTrashed: true,  // Papelera
-      trashedAt: true,  // Papelera
+      isTrashed: true,
+      trashedAt: true,
       owner: { select: { id: true, fullName: true, email: true } },
       members: {
         where: { userId },
@@ -166,11 +157,7 @@ export async function listAccessibleBasesForUser(userId: number) {
 
 /* ===========================================================================
    === NUEVO WORKSPACES: listar bases activas por workspace (con permisos) ===
-   ===========================================================================
-   - Si isSysadmin=true: devuelve TODAS las bases activas del workspace.
-   - Si isSysadmin=false: aplica la misma lógica de accesibilidad que listAccessibleBasesForUser
-     pero filtrando por workspaceId.
-*/
+   =========================================================================== */
 export async function listBasesForWorkspace(
   workspaceId: number,
   viewerUserId: number,
@@ -178,12 +165,8 @@ export async function listBasesForWorkspace(
 ) {
   const isSysadmin = !!opts?.isSysadmin;
 
-  // 👇 Tipamos explícitamente como BaseWhereInput
   const where: Prisma.BaseWhereInput = isSysadmin
-    ? {
-        workspaceId,
-        isTrashed: false,
-      }
+    ? { workspaceId, isTrashed: false }
     : {
         workspaceId,
         isTrashed: false,
@@ -206,6 +189,8 @@ export async function listBasesForWorkspace(
       updatedAt: true,
       isTrashed: true,
       trashedAt: true,
+      // 👇 NUEVO: para poder mostrar el nombre del dueño en el grid del workspace
+      owner: { select: { id: true, fullName: true, email: true } },
     },
     orderBy: { id: 'asc' },
   });
@@ -217,17 +202,17 @@ export async function listBasesForWorkspace(
  */
 export async function listAllBasesForSysadmin(viewerUserId: number) {
   const bases = await prisma.base.findMany({
-    where: { isTrashed: false }, // Papelera
+    where: { isTrashed: false },
     select: {
       id: true,
       name: true,
       visibility: true,
       ownerId: true,
-      workspaceId: true,           // === NUEVO WORKSPACES ===
+      workspaceId: true,
       createdAt: true,
       updatedAt: true,
-      isTrashed: true,  // Papelera
-      trashedAt: true,  // Papelera
+      isTrashed: true,
+      trashedAt: true,
       owner: { select: { id: true, fullName: true, email: true } },
       members: {
         where: { userId: viewerUserId },
@@ -246,20 +231,19 @@ export async function listAllBasesForSysadmin(viewerUserId: number) {
 }
 
 export async function getBaseById(baseId: number) {
-  // Papelera: por defecto solo retornamos si NO está en papelera
   return prisma.base.findFirst({
-    where: { id: baseId, isTrashed: false }, // (antes findUnique sin filtro)
+    where: { id: baseId, isTrashed: false },
     select: {
       id: true,
       name: true,
       visibility: true,
       ownerId: true,
-      workspaceId: true,           // === NUEVO WORKSPACES ===
+      workspaceId: true,
       createdAt: true,
       updatedAt: true,
-      isTrashed: true,  // Papelera
-      trashedAt: true,  // Papelera
-      owner: { select: { id: true, fullName: true, email: true } },
+      isTrashed: true,
+      trashedAt: true,
+      owner: { select: { id: true, fullName: true, email: true } }, // ya venía
     },
   });
 }
@@ -268,7 +252,6 @@ export async function updateBase(
   baseId: number,
   patch: { name?: string; visibility?: BaseVisibility }
 ) {
-  // Papelera: impedir actualizar si está en papelera (estado inválido)
   const current = await prisma.base.findUnique({
     where: { id: baseId },
     select: { isTrashed: true },
@@ -280,7 +263,7 @@ export async function updateBase(
   }
   if (current.isTrashed) {
     const err: any = new Error('No puedes actualizar una base en la papelera. Restaúrala primero.');
-    err.status = 409; // conflicto de estado
+    err.status = 409;
     throw err;
   }
 
@@ -296,11 +279,11 @@ export async function updateBase(
         name: true,
         visibility: true,
         ownerId: true,
-        workspaceId: true,          // === NUEVO WORKSPACES ===
+        workspaceId: true,
         createdAt: true,
         updatedAt: true,
-        isTrashed: true,  // Papelera
-        trashedAt: true,  // Papelera
+        isTrashed: true,
+        trashedAt: true,
       },
     });
   } catch (e) {
@@ -308,15 +291,6 @@ export async function updateBase(
   }
 }
 
-/* =============================================================================
-   === NUEVO WORKSPACES: mover base entre workspaces (mismo owner) ============
-   =============================================================================
-   - Solo permitido si:
-     * actor.isSysadmin = true, y ADEMÁS el workspace destino pertenece al mismo owner
-       (no transferimos ownership aquí), o
-     * actor es el owner y el workspace destino también es suyo.
-   - No permite mover una base en papelera (estado inválido).
-*/
 export async function moveBaseToWorkspace(
   baseId: number,
   newWorkspaceId: number,
@@ -337,7 +311,6 @@ export async function moveBaseToWorkspace(
     throw err;
   }
 
-  // Validar workspace destino y propiedad
   const ws = await prisma.workspace.findUnique({
     where: { id: newWorkspaceId },
     select: { id: true, ownerId: true, isTrashed: true },
@@ -348,14 +321,12 @@ export async function moveBaseToWorkspace(
     throw err;
   }
 
-  // En esta versión NO transferimos ownership: debe coincidir el owner.
   if (ws.ownerId !== base.ownerId) {
     const err: any = new Error('No puedes mover la base a un workspace de otro owner');
     err.status = 409;
     throw err;
   }
 
-  // Autorización básica (propietario o sysadmin)
   if (!actor.isSysadmin && actor.userId !== base.ownerId) {
     const err: any = new Error('FORBIDDEN');
     err.status = 403;
@@ -379,47 +350,31 @@ export async function moveBaseToWorkspace(
   });
 }
 
-/** SOFT DELETE: mover a papelera (no borramos) + cascada a tablas */
 export async function deleteBase(baseId: number) {
-  // 1) Marcar la BASE como en papelera
   try {
     await prisma.base.update({
       where: { id: baseId },
-      data: { isTrashed: true, trashedAt: new Date() }, // <-- NUEVO: Papelera
+      data: { isTrashed: true, trashedAt: new Date() },
     });
   } catch (e) {
-    // (opcional) rename de cortesía si tienes índices estrictos
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-      const current = await prisma.base.findUnique({
-        where: { id: baseId },
-        select: { name: true },
-      });
+      const current = await prisma.base.findUnique({ where: { id: baseId }, select: { name: true } });
       const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
       await prisma.base.update({
         where: { id: baseId },
-        data: {
-          name: `${current?.name ?? 'Base'} (deleted ${stamp})`,
-          isTrashed: true,
-          trashedAt: new Date(),
-        },
+        data: { name: `${current?.name ?? 'Base'} (deleted ${stamp})`, isTrashed: true, trashedAt: new Date() },
       });
     } else {
       throw e;
     }
   }
 
-  // 2) <-- NUEVO: CASCADA → mover TODAS SUS TABLAS a papelera
   await prisma.tableDef.updateMany({
     where: { baseId, isTrashed: false },
     data: { isTrashed: true, trashedAt: new Date() },
   });
 }
 
-/* ===========================
-   Papelera: utilidades (OWNER)
-   =========================== */
-
-/** Listar bases en papelera (solo del owner) */
 export async function listTrashedBasesForOwner(ownerId: number) {
   return prisma.base.findMany({
     where: { ownerId, isTrashed: true },
@@ -437,15 +392,9 @@ export async function listTrashedBasesForOwner(ownerId: number) {
   });
 }
 
-/* ====================================
-   ADMIN: listar papelera GLOBAL (ya tenías)
-   ==================================== */
 export async function listTrashedBasesForAdmin(params?: { ownerId?: number }) {
   return prisma.base.findMany({
-    where: {
-      isTrashed: true,
-      ...(params?.ownerId ? { ownerId: params.ownerId } : {}),
-    },
+    where: { isTrashed: true, ...(params?.ownerId ? { ownerId: params.ownerId } : {}) },
     select: {
       id: true,
       name: true,
@@ -461,9 +410,6 @@ export async function listTrashedBasesForAdmin(params?: { ownerId?: number }) {
   });
 }
 
-/* =========================================================
-   Restaurar una base (OWNER o SYSADMIN) — con cascada
-   ========================================================= */
 export async function restoreBase(
   baseId: number,
   ownerIdOrActor: number | { userId: number; isSysadmin: boolean }
@@ -490,16 +436,15 @@ export async function restoreBase(
   }
 
   try {
-    // 1) Restaurar BASE
     const restored = await prisma.base.update({
       where: { id: baseId },
-      data: { isTrashed: false, trashedAt: null }, // <-- NUEVO: restauración
+      data: { isTrashed: false, trashedAt: null },
       select: {
         id: true,
         name: true,
         visibility: true,
         ownerId: true,
-        workspaceId: true, // === NUEVO WORKSPACES ===
+        workspaceId: true,
         createdAt: true,
         updatedAt: true,
         isTrashed: true,
@@ -507,7 +452,6 @@ export async function restoreBase(
       },
     });
 
-    // 2) <-- NUEVO: CASCADA → restaurar TODAS SUS TABLAS
     await prisma.tableDef.updateMany({
       where: { baseId, isTrashed: true },
       data: { isTrashed: false, trashedAt: null },
@@ -519,9 +463,6 @@ export async function restoreBase(
   }
 }
 
-/* =================================================================
-   Borrado definitivo (OWNER o SYSADMIN) — compatibilidad hacia atrás
-   ================================================================= */
 export async function deleteBasePermanently(
   baseId: number,
   ownerIdOrActor: number | { userId: number; isSysadmin: boolean }
@@ -552,25 +493,15 @@ export async function deleteBasePermanently(
     throw err;
   }
 
-  await prisma.base.delete({ where: { id: baseId } }); // onDelete: Cascade → elimina tablas
+  await prisma.base.delete({ where: { id: baseId } });
   return { ok: true };
 }
 
-/** Vaciar papelera del owner (borrado definitivo de todas) */
 export async function emptyTrashForOwner(ownerId: number) {
-  await prisma.base.deleteMany({
-    where: { ownerId, isTrashed: true },
-  });
+  await prisma.base.deleteMany({ where: { ownerId, isTrashed: true } });
 }
 
-/** Purga automática (≥ N días en papelera) */
 export async function purgeTrashedBasesOlderThan(days: number = 30) {
   const threshold = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-  await prisma.base.deleteMany({
-    where: {
-      isTrashed: true,
-      trashedAt: { lte: threshold },
-    },
-  });
+  await prisma.base.deleteMany({ where: { isTrashed: true, trashedAt: { lte: threshold } } });
 }
-

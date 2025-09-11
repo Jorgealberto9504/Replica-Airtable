@@ -46,14 +46,27 @@ export default function Login() {
         password: password.trim()
       });
 
-      if (resp.ok) {
-  // (opcional) golpe rápido a /auth/me para “despertar” la cookie en dev
-  try { await fetch(`${import.meta.env.VITE_API_URL ?? 'http://localhost:8080'}/auth/me`, { credentials: 'include' }); } catch {}
+      if (resp.ok && resp.user) {
+        // (opcional) golpe rápido a /auth/me para “despertar” la cookie en dev
+        try {
+          await fetch(
+            `${import.meta.env.VITE_API_URL ?? 'http://localhost:8080'}/auth/me`,
+            { credentials: 'include' }
+          );
+        } catch {}
 
-  // recarga dura: garantiza que Dashboard vea la cookie y /auth/me responda 200
-  window.location.href = '/dashboard';
-  return;
-}
+        // <<< REDIRECCIÓN INMEDIATA SEGÚN mustChangePassword >>>
+        if (resp.user.mustChangePassword) {
+          // a la pantalla especial de cambio de contraseña (sin recarga dura)
+          nav('/change-password', { replace: true });
+          return;
+        }
+
+        // si no debe cambiar password → al dashboard (recarga dura para asegurar cookie)
+        window.location.href = '/dashboard';
+        return;
+      }
+
       setErr('Credenciales inválidas');
     } catch (e: any) {
       setErr(e?.message ?? 'Error de conexión');
