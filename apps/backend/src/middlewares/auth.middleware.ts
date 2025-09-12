@@ -36,6 +36,7 @@ export async function requireAuth(
       select: {
         id: true,
         email: true,
+        fullName: true,
         platformRole: true,       // 'USER' | 'SYSADMIN'
         isActive: true,           // para desactivar cuentas
         mustChangePassword: true, // para “cambiar contraseña”
@@ -98,6 +99,7 @@ export function getAuthUser<
   T = {
     id: number;
     email: string;
+    fullName?: string;
     platformRole: 'USER' | 'SYSADMIN';
     mustChangePassword: boolean;
     canCreateBases: boolean;

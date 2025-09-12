@@ -18,6 +18,8 @@ import {
   emptyTrashForBase,
   // ===== NUEVO: Papelera GLOBAL (admin) =====
   listTrashedTablesForAdmin,
+  // ===== NUEVO: Meta de grid =====
+  getGridMetaForTable,
 } from '../services/tables.service.js';
 
 // ---------- Schemas (validación de inputs) ----------
@@ -55,11 +57,6 @@ function parseTableId(req: Request): number {
 }
 
 // ---------- Controllers ----------
-/**
- * POST /bases/:baseId/tables
- * Crea una tabla en la base dada.
- * Requiere: requireAuth + guard('schema:manage') en ruta.
- */
 export async function createTableCtrl(req: Request, res: Response) {
   try {
     const me = getAuthUser<{ id: number }>(req);
@@ -91,11 +88,6 @@ export async function createTableCtrl(req: Request, res: Response) {
   }
 }
 
-/**
- * GET /bases/:baseId/tables
- * Lista las tablas de una base (excluye papelera).
- * Requiere: requireAuth + guard('base:view') en ruta.
- */
 export async function listTablesCtrl(req: Request, res: Response) {
   try {
     const me = getAuthUser<{ id: number }>(req);
@@ -111,11 +103,6 @@ export async function listTablesCtrl(req: Request, res: Response) {
   }
 }
 
-/**
- * GET /bases/:baseId/tables/nav
- * Lista ligera para la barra de tabs: id, name, position.
- * Requiere: requireAuth + guard('base:view') en ruta.
- */
 export async function listTablesNavCtrl(req: Request, res: Response) {
   try {
     const me = getAuthUser<{ id: number }>(req);
@@ -131,11 +118,6 @@ export async function listTablesNavCtrl(req: Request, res: Response) {
   }
 }
 
-/**
- * PATCH /bases/:baseId/tables/reorder
- * Body: { orderedIds: number[] } (ids de TODAS las tablas activas en el nuevo orden)
- * Requiere: requireAuth + guard('schema:manage') en ruta.
- */
 export async function reorderTablesCtrl(req: Request, res: Response) {
   try {
     const me = getAuthUser<{ id: number }>(req);
@@ -150,7 +132,6 @@ export async function reorderTablesCtrl(req: Request, res: Response) {
     }
 
     await reorderTables(baseId, parsed.data.orderedIds);
-    // Devolvemos el nuevo orden para que el front rehidrate sin pedir otra vez:
     const tabs = await listTablesNavForBase(baseId);
     return res.json({ ok: true, tabs });
   } catch (e: any) {
@@ -160,11 +141,6 @@ export async function reorderTablesCtrl(req: Request, res: Response) {
   }
 }
 
-/**
- * GET /bases/:baseId/tables/:tableId
- * Obtiene una tabla por id (verifica que pertenezca a la base).
- * Requiere: requireAuth + guard('base:view') en ruta.
- */
 export async function getTableCtrl(req: Request, res: Response) {
   try {
     const me = getAuthUser<{ id: number }>(req);
@@ -186,10 +162,26 @@ export async function getTableCtrl(req: Request, res: Response) {
 }
 
 /**
- * PATCH /bases/:baseId/tables/:tableId
- * Actualiza nombre de la tabla (verifica pertenencia).
- * Requiere: requireAuth + guard('schema:manage') en ruta.
+ * NUEVO: GET /bases/:baseId/tables/:tableId/meta
+ * Metadatos (estructura de columnas) para el grid.
  */
+export async function getTableMetaCtrl(req: Request, res: Response) {
+  try {
+    const me = getAuthUser<{ id: number }>(req);
+    if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
+
+    const baseId = parseBaseId(req);
+    const tableId = parseTableId(req);
+
+    const meta = await getGridMetaForTable(baseId, tableId);
+    return res.json({ ok: true, meta });
+  } catch (e: any) {
+    return res
+      .status(e?.status ?? 500)
+      .json({ ok: false, error: e?.message ?? 'No se pudo obtener metadatos' });
+  }
+}
+
 export async function updateTableCtrl(req: Request, res: Response) {
   try {
     const me = getAuthUser<{ id: number }>(req);
@@ -223,12 +215,6 @@ export async function updateTableCtrl(req: Request, res: Response) {
   }
 }
 
-/**
- * DELETE /bases/:baseId/tables/:tableId
- * Elimina una tabla de la base (verifica pertenencia).
- * Requiere: requireAuth + guard('schema:manage') en ruta.
- * NOTA: ahora hace SOFT DELETE (papelera)
- */
 export async function deleteTableCtrl(req: Request, res: Response) {
   try {
     const me = getAuthUser<{ id: number }>(req);
@@ -237,7 +223,7 @@ export async function deleteTableCtrl(req: Request, res: Response) {
     const baseId = parseBaseId(req);
     const tableId = parseTableId(req);
 
-    await deleteTable(baseId, tableId); // mueve a papelera o idempotente si base ya está en papelera
+    await deleteTable(baseId, tableId);
     return res.json({ ok: true });
   } catch (e: any) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
@@ -254,7 +240,6 @@ export async function deleteTableCtrl(req: Request, res: Response) {
    ====== Papelera (owner) ===
    =========================== */
 
-/** GET /bases/:baseId/tables/trash — Lista tablas en papelera (owner) */
 export async function listTrashedTablesCtrl(req: Request, res: Response) {
   try {
     const me = getAuthUser<{ id: number }>(req);
@@ -267,7 +252,6 @@ export async function listTrashedTablesCtrl(req: Request, res: Response) {
   }
 }
 
-/** POST /bases/:baseId/tables/:tableId/restore — Restaurar tabla (owner) */
 export async function restoreTableCtrl(req: Request, res: Response) {
   try {
     const me = getAuthUser<{ id: number }>(req);
@@ -286,7 +270,6 @@ export async function restoreTableCtrl(req: Request, res: Response) {
   }
 }
 
-/** DELETE /bases/:baseId/tables/:tableId/permanent — Borrado definitivo (owner) */
 export async function deleteTablePermanentCtrl(req: Request, res: Response) {
   try {
     const me = getAuthUser<{ id: number }>(req);
@@ -305,7 +288,6 @@ export async function deleteTablePermanentCtrl(req: Request, res: Response) {
   }
 }
 
-/** POST /bases/:baseId/tables/trash/empty — Vaciar papelera de tablas de la base (owner) */
 export async function emptyTableTrashCtrl(req: Request, res: Response) {
   try {
     const me = getAuthUser<{ id: number }>(req);
@@ -322,10 +304,7 @@ export async function emptyTableTrashCtrl(req: Request, res: Response) {
 /* ===========================
    ======= NUEVO ADMIN =======
    =========================== */
-/**
- * GET /bases/admin/:baseId/tables/trash
- * Lista la papelera de tablas de una base — SOLO SYSADMIN
- */
+
 export async function listTrashedTablesAdminCtrl(req: Request, res: Response) {
   const me = getAuthUser<{ platformRole: 'USER' | 'SYSADMIN' }>(req);
   if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
@@ -336,10 +315,6 @@ export async function listTrashedTablesAdminCtrl(req: Request, res: Response) {
   return res.json({ ok: true, tables });
 }
 
-/**
- * GET /bases/admin/tables/trash?ownerId=&baseId=
- * Papelera GLOBAL de tablas — SOLO SYSADMIN
- */
 export async function listAllTrashedTablesAdminCtrl(req: Request, res: Response) {
   const me = getAuthUser<{ platformRole: 'USER' | 'SYSADMIN' }>(req);
   if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
@@ -358,10 +333,6 @@ export async function listAllTrashedTablesAdminCtrl(req: Request, res: Response)
   return res.json({ ok: true, tables });
 }
 
-/**
- * POST /bases/admin/:baseId/tables/:tableId/restore
- * Restaurar tabla en papelera — SOLO SYSADMIN
- */
 export async function restoreTableAdminCtrl(req: Request, res: Response) {
   const me = getAuthUser<{ platformRole: 'USER' | 'SYSADMIN' }>(req);
   if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
@@ -382,14 +353,12 @@ export async function restoreTableAdminCtrl(req: Request, res: Response) {
   }
 }
 
-/**
- * DELETE /bases/admin/:baseId/tables/:tableId/permanent
- * Borrado definitivo de tabla — SOLO SYSADMIN
- */
 export async function deleteTablePermanentAdminCtrl(req: Request, res: Response) {
   const me = getAuthUser<{ platformRole: 'USER' | 'SYSADMIN' }>(req);
   if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
-  if (me.platformRole !== 'SYSADMIN') return res.status(403).json({ ok: false, error: 'FORBIDDEN' });
+  if (me.platformRole !== 'SYSADMIN') {
+    return res.status(403).json({ ok: false, error: 'FORBIDDEN' });
+  }
 
   const baseId = parseBaseId(req);
   const tableId = parseTableId(req);

@@ -1,9 +1,13 @@
-import { Link } from 'react-router-dom';
+// apps/frontend/src/components/Header.tsx
+import { Link, useNavigate } from 'react-router-dom';
+import { useMemo, useState } from 'react';
 import logo from '../assets/mbq-logo.png';
 
 type User = {
   fullName?: string;
+  email?: string;
   platformRole?: 'USER' | 'SYSADMIN';
+  canCreateBases?: boolean; // nos sirve para decidir si ve la papelera
 };
 
 type SearchBoxProps = {
@@ -15,13 +19,26 @@ type SearchBoxProps = {
 type Props = {
   user?: User;
   onLogout: () => void;
-  onOpenRegister?: () => void; // se usa sólo para SYSADMIN
+  onOpenRegister?: () => void; // sólo para SYSADMIN
   /** Cuando se envía, muestra el buscador centrado en el header */
   searchBox?: SearchBoxProps;
 };
 
 export default function Header({ user, onLogout, onOpenRegister, searchBox }: Props) {
+  const nav = useNavigate();
   const isAdmin = user?.platformRole === 'SYSADMIN';
+  // 👇 Solo SYSADMIN o creadores ven la opción de "Papelera de reciclaje"
+  const canSeeTrash = isAdmin || !!user?.canCreateBases;
+
+  // Avatar + dropdown
+  const [openMenu, setOpenMenu] = useState(false);
+  const initial = useMemo(() => {
+    const s = (user?.fullName || user?.email || '').trim();
+    return s ? s[0]!.toUpperCase() : 'U';
+  }, [user?.fullName, user?.email]);
+
+  function toggleMenu() { setOpenMenu(v => !v); }
+  function closeMenu() { setOpenMenu(false); }
 
   return (
     <header
@@ -42,15 +59,14 @@ export default function Header({ user, onLogout, onOpenRegister, searchBox }: Pr
         to="/dashboard"
         style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}
       >
-        <img src={logo} alt="MBQ" style={{ height: 65 }} />
+        <img src={logo} alt="MBQ" style={{ height: 56 }} />
       </Link>
 
       {/* Centro: buscador (si se pasa) */}
       <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
         {searchBox && (
           <input
-            className="input"
-            style={{ maxWidth: 480, width: '100%', borderRadius: 999 }}
+            className="input topbar-search"
             placeholder={searchBox.placeholder ?? 'Buscar…'}
             value={searchBox.value}
             onChange={(e) => searchBox.onChange(e.target.value)}
@@ -59,23 +75,18 @@ export default function Header({ user, onLogout, onOpenRegister, searchBox }: Pr
       </div>
 
       {/* Derecha: acciones */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }}>
         {isAdmin && onOpenRegister && (
           <button
             onClick={onOpenRegister}
-            style={{
-              padding: '8px 12px',
-              borderRadius: 8,
-              background: '#2563eb',
-              color: 'white',
-              border: 'none',
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
+            className="btn primary"
+            style={{ padding: '8px 12px', borderRadius: 8, fontWeight: 600 }}
           >
             Registrar usuario
           </button>
         )}
+
+        {/* Pill de rol (opcional) */}
         {user?.platformRole && (
           <span
             style={{
@@ -90,19 +101,76 @@ export default function Header({ user, onLogout, onOpenRegister, searchBox }: Pr
             {user.platformRole}
           </span>
         )}
+
+        {/* Avatar con inicial → abre menú */}
         <button
-          onClick={onLogout}
+          onClick={toggleMenu}
+          aria-haspopup="menu"
+          aria-expanded={openMenu}
           style={{
-            padding: '8px 12px',
-            borderRadius: 8,
-            background: '#f3f4f6',
+            width: 36, height: 36,
+            borderRadius: '50%',
             border: '1px solid #e5e7eb',
-            color: '#111827',
+            background: '#f3f4f6',
+            fontWeight: 800,
             cursor: 'pointer',
           }}
+          title={user?.fullName || user?.email || 'Usuario'}
         >
-          Salir
+          {initial}
         </button>
+
+        {/* Overlay para cerrar clic fuera */}
+        {openMenu && (
+          <>
+            <div
+              onClick={closeMenu}
+              style={{ position: 'fixed', inset: 0, zIndex: 49, background: 'transparent' }}
+            />
+            <div
+              role="menu"
+              style={{
+                position: 'absolute',
+                right: 0,
+                top: 48,
+                zIndex: 50,
+                width: 280,
+                background: '#fff',
+                border: '1px solid #e5e7eb',
+                borderRadius: 12,
+                boxShadow: '0 10px 20px rgba(0,0,0,.08)',
+                overflow: 'hidden',
+              }}
+            >
+              {/* Header del menú: siempre nombre completo si existe */}
+              <div style={{ padding: 12, borderBottom: '1px solid #e5e7eb' }}>
+                <div style={{ fontWeight: 800 }}>
+                  {user?.fullName || user?.email || 'Usuario'}
+                </div>
+                <div style={{ color: '#6b7280', fontSize: 12 }}>
+                  {user?.email || '—'}
+                </div>
+              </div>
+
+              {/* Opciones */}
+              {canSeeTrash && (
+                <button
+                  className="menu-item"
+                  onClick={() => { closeMenu(); nav('/trash'); }}
+                >
+                  🗑️ Papelera de reciclaje
+                </button>
+              )}
+
+              <button
+                className="menu-item"
+                onClick={() => { closeMenu(); onLogout(); }}
+              >
+                Cerrar sesión
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </header>
   );

@@ -1,3 +1,4 @@
+// apps/frontend/src/router.tsx (o AppRouter.tsx según tu estructura)
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -5,6 +6,7 @@ import RequireAuth from './auth/RequireAuth';
 import BaseView from './pages/BaseView';
 import ChangePassword from './pages/ChangePassword';
 import BasesList from './pages/BasesList';
+import TrashView from './pages/TrashView'; // <<<<<< NUEVO
 
 export default function AppRouter() {
   return (
@@ -28,6 +30,16 @@ export default function AppRouter() {
         element={
           <RequireAuth>
             <BasesList />
+          </RequireAuth>
+        }
+      />
+
+      {/* Papelera */}
+      <Route
+        path="/trash"
+        element={
+          <RequireAuth>
+            <TrashView />
           </RequireAuth>
         }
       />

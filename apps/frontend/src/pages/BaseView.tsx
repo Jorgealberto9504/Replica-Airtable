@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import Header from '../components/Header';
@@ -15,6 +15,8 @@ import {
   renameTable,
   trashTable,
   type TabItem,
+  getTableMeta,
+  type GridColumnMeta,
 } from '../api/tables';
 
 export default function BaseView() {
@@ -34,6 +36,10 @@ export default function BaseView() {
   const [resolving, setResolving] = useState(false);
 
   const [gridMeta, setGridMeta] = useState<any>(null);
+
+  // META columnas (7.3.4)
+  const [cols, setCols] = useState<GridColumnMeta[]>([]);
+  const [loadingCols, setLoadingCols] = useState(false);
 
   const [canManage, setCanManage] = useState(false);
 
@@ -93,6 +99,39 @@ export default function BaseView() {
     return () => { cancelled = true; };
   }, [baseId, urlTableId, nav]);
 
+  // ====== Normalizar si la URL trae un tableId inexistente ======
+  const sortedTabs = useMemo(
+    () => [...tabs].sort((a, b) => a.position - b.position),
+    [tabs]
+  );
+  useEffect(() => {
+    if (!loadingTabs && urlTableId && sortedTabs.length) {
+      const exists = sortedTabs.some(t => t.id === urlTableId);
+      if (!exists) {
+        nav(`/bases/${baseId}/t/${sortedTabs[0].id}`, { replace: true });
+      }
+    }
+  }, [loadingTabs, urlTableId, sortedTabs, baseId, nav]);
+
+  // ====== Cargar metadatos de columnas cuando cambia la tabla activa ======
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!urlTableId) { setCols([]); return; }
+      setLoadingCols(true);
+      try {
+        const r = await getTableMeta(baseId, urlTableId);
+        if (!cancelled) {
+          const ordered = (r.meta?.columns ?? []).slice().sort((a, b) => (a.position ?? 1e9) - (b.position ?? 1e9));
+          setCols(ordered);
+        }
+      } finally {
+        if (!cancelled) setLoadingCols(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [baseId, urlTableId]);
+
   // ====== Handlers TabsBar ======
   function handleSelect(tableId: number) {
     if (tableId !== urlTableId) nav(`/bases/${baseId}/t/${tableId}`);
@@ -108,7 +147,6 @@ export default function BaseView() {
     if (!confirm('¿Enviar esta tabla a la papelera?')) return;
     await trashTable(baseId, tableId);
     await refreshTabs();
-    // si borramos la activa, resolvemos a la siguiente por defecto (o vacío)
     if (urlTableId === tableId) {
       const r = await resolveBase(baseId);
       if (r.defaultTableId) nav(`/bases/${baseId}/t/${r.defaultTableId}`, { replace: true });
@@ -135,7 +173,6 @@ export default function BaseView() {
       setOpenCreate(false);
       setFormName('');
       await refreshTabs();
-      // Ir a la nueva tabla creada
       nav(`/bases/${baseId}/t/${r.table.id}`);
     } catch (e: any) {
       setFormErr(e?.message || 'No se pudo crear la tabla');
@@ -164,11 +201,6 @@ export default function BaseView() {
     </div>
   );
 
-  // Tab actual (derivado de URL)
-  const sortedTabs = useMemo(
-    () => [...tabs].sort((a, b) => a.position - b.position),
-    [tabs]
-  );
   const currentTab = urlTableId ? sortedTabs.find(t => t.id === urlTableId) : null;
 
   return (
@@ -208,15 +240,51 @@ export default function BaseView() {
           </div>
         ) : currentTab ? (
           <div className="card" style={{ marginTop: 16 }}>
-            Vista de tabla <b>{currentTab.name}</b>
-            {gridMeta?.totalTables != null && (
-              <div className="muted" style={{ marginTop: 4 }}>
-                (Meta: {gridMeta.totalTables} tablas en total)
+            <div style={{ marginBottom: 8 }}>
+              Vista de tabla <b>{currentTab.name}</b>
+              {gridMeta?.totalTables != null && (
+                <span className="muted" style={{ marginLeft: 8 }}>
+                  (Meta: {gridMeta.totalTables} tablas en total)
+                </span>
+              )}
+            </div>
+
+            {/* Header del grid con metadatos de columnas */}
+            {loadingCols ? (
+              <div className="muted">Cargando columnas…</div>
+            ) : cols.length === 0 ? (
+              <div className="muted">Aún no hay columnas definidas.</div>
+            ) : (
+              <div
+                style={{
+                  display: 'grid',
+                  gridAutoFlow: 'column',
+                  gridAutoColumns: 'min-content',
+                  gap: 8,
+                  overflowX: 'auto',
+                  paddingBottom: 6,
+                  borderBottom: '1px solid #e5e7eb',
+                }}
+              >
+                {cols.map(c => (
+                  <div
+                    key={c.id}
+                    className="chip"
+                    style={{
+                      minWidth: (c.width ?? 140),
+                      fontWeight: 700,
+                      background: '#f9fafb',
+                      border: '1px solid #e5e7eb',
+                    }}
+                    title={`${c.label} (${c.type})`}
+                  >
+                    {c.label}
+                  </div>
+                ))}
               </div>
             )}
           </div>
         ) : (
-          // Caso raro: hay tablas pero la URL trae un id inexistente → normalizamos a la primera
           <div className="card" style={{ marginTop: 16 }}>
             Normalizando selección…
           </div>
