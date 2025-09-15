@@ -1,7 +1,7 @@
 // apps/frontend/src/auth/AuthContext.tsx
 import { createContext, useContext, useEffect, useState } from 'react';
 import { fetchMe, doLogout } from '../api/auth';
-import { postJSON } from '../api/http';
+import { postJSON, HTTPError } from '../api/http';
 
 export type PlatformRole = 'USER' | 'SYSADMIN';
 export type AuthUser = {
@@ -10,12 +10,13 @@ export type AuthUser = {
   fullName: string;
   platformRole: PlatformRole;
   mustChangePassword: boolean;
-  canCreateBases?: boolean; // podría llegar por /auth/me
+  canCreateBases?: boolean;
 };
 
 type AuthContextValue = {
   user: AuthUser | null;
   loading: boolean;
+  mustChangePassword: boolean;             // <<< NUEVO
   login: (email: string, password: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -26,18 +27,23 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mustChangePassword, setMustChangePassword] = useState(false); // <<< NUEVO
 
-
-
-
-  // solicitamos al backend los datos del usuario y los guardamos en setUser
   useEffect(() => {
     (async () => {
       try {
         const me = await fetchMe();
         setUser(me.user ?? null);
-      } catch {
-        setUser(null);
+        setMustChangePassword(Boolean(me.user?.mustChangePassword));
+      } catch (e) {
+        // Si el backend bloquea /auth/me con 403 + reason MUST_CHANGE_PASSWORD
+        if (e instanceof HTTPError && e.status === 403 && e.data?.reason === 'MUST_CHANGE_PASSWORD') {
+          setUser(null);
+          setMustChangePassword(true);
+        } else {
+          setUser(null);
+          setMustChangePassword(false);
+        }
       } finally {
         setLoading(false);
       }
@@ -51,12 +57,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     if (!resp.ok || !resp.user) throw new Error('Credenciales inválidas');
     setUser(resp.user);
+    setMustChangePassword(Boolean(resp.user.mustChangePassword)); // <<< NUEVO
     return resp.user;
   }
 
   async function logout() {
     await doLogout();
     setUser(null);
+    setMustChangePassword(false);
   }
 
   async function refresh() {
@@ -64,15 +72,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const me = await fetchMe();
       setUser(me.user ?? null);
-    } catch {
-      setUser(null);
+      setMustChangePassword(Boolean(me.user?.mustChangePassword));
+    } catch (e) {
+      if (e instanceof HTTPError && e.status === 403 && e.data?.reason === 'MUST_CHANGE_PASSWORD') {
+        setUser(null);
+        setMustChangePassword(true);
+      } else {
+        setUser(null);
+        setMustChangePassword(false);
+      }
     } finally {
-      setLoading(false);    
+      setLoading(false);
     }
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, refresh }}>
+    <AuthContext.Provider
+      value={{ user, loading, mustChangePassword, login, logout, refresh }}
+    >
       {children}
     </AuthContext.Provider>
   );

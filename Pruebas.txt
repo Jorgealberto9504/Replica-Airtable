@@ -1,84 +1,27 @@
+Hoy
 
-Login
-post
-http://localhost:8080/auth/login
-{
-    "email": "jorge@mbqinc.com",
-    "password": "Aa12345!"
-}
+login con usuario creador
+crear base
+listar bases (listara las bases en las que es dueño y las publicas) las private solo tienen acceso el superusuario, creador y miembros
+modificar base, podemos modificar su nombre o visibilidad
+eliminar base
 
-
-Registro
-post
-http://localhost:8080/auth/admin/register
-
-{
-  "email": "Mario@mbqinc.com",
-  "fullName": "Mario Hernandez",
-  "tempPassword": "Aa12345!",
-  "platformRole": "USER",
-  "canCreateBases": false
-}
-
-
-loguear user nuevo
-Login
-post
-http://localhost:8080/auth/login
-{
-    "email": "Mario@mbqinc.com",
-    "password": "Aa12345!"
-}
-
-
-pegarle a endpoint
-http://localhost:8080/auth/me
-no da acceso
+probar miembros en bases
+entrar con un usuario general para ver su acceso a bases publicas y en las que es miembro
 
 
 
+usuario creador : 
+  luisa@mbqinc.com
+  Aa12345!
 
-change-password
+usuario:
+  mario@mbqinc.com
+  Bb12345!
 
-{ "newPassword": "Bb12345!", "confirm": "Bb12345!" }
-
-pegarle al endpoinr me
-
-probar acceso en el front y revisar en neon la flag de mustchagepassword
-
-
-
-
-
-
-GET http://localhost:8080/bases/1/members
-
-
-
-
-POST http://localhost:8080/bases/1/members
-
-{
-  "email": "marcos@mbqinc.com",
-  "role": "EDITOR"
-}
-
-
-
-
-PATCH http://localhost:8080/bases/1/members/5
-
-{
-  "role": "VIEWER"
-}
-
-
-
-DELETE http://localhost:8080/bases/1/members/5
-
-
-
-
+Admin:
+  jorge@mbqinc.com
+  Aa12345!
 
 
 
@@ -86,3 +29,6 @@ DELETE http://localhost:8080/bases/1/members/5
     "name": "Ventas Q4",
     "visibility": "PRIVATE"
 }
+
+
+

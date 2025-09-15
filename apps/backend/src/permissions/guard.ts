@@ -3,7 +3,25 @@ import type { Request, Response, NextFunction } from 'express';
 import { buildPermissionContext } from './context.js';
 import { can } from './rules.js';
 import type { Action } from './types.js';
-import { getAuthUser } from '../middlewares/auth.middleware.js'; // <-- NUEVO
+import { getAuthUser } from '../middlewares/auth.middleware.js';
+
+// ========================
+// NUEVO T6.4: mensajes 403
+// ========================
+const FORBIDDEN_MESSAGES: Record<Action, string> = {
+  'schema:manage'         : 'No tienes permisos para administrar el esquema de esta base.',
+  'members:manage'        : 'No puedes administrar miembros de esta base.',
+  'base:delete'           : 'No puedes eliminar esta base.',
+  'base:visibility'       : 'No puedes cambiar la visibilidad de esta base.',
+  'base:view'             : 'No tienes permisos para ver esta base.',
+  'bases:create'          : 'No tienes permiso para crear bases.',
+  'platform:users:manage' : 'No tienes permiso para administrar usuarios.',
+  'records:read'          : 'No tienes permisos para ver registros.',
+  'records:create'        : 'No tienes permisos para crear registros.',
+  'records:update'        : 'No tienes permisos para actualizar registros.',
+  'records:delete'        : 'No tienes permisos para eliminar registros.',
+  'comments:create'       : 'No tienes permisos para comentar.',
+};
 
 /**
  * Extrae baseId desde params/body/query y valida que sea entero > 0.
@@ -29,7 +47,30 @@ export function guard(action: Action) {
       const ctx = await buildPermissionContext(req, baseId);
 
       if (!can(ctx, action)) {
-        return res.status(403).json({ ok: false, error: 'Forbidden', action });
+        // ==========================
+        // NUEVO T6.4: 404 opcional
+        // ==========================
+        // Si es una base PRIVADA y el usuario no es owner ni miembro,
+        // puedes devolver 404 en vez de 403 para no filtrar su existencia.
+        if (
+          action === 'base:view' &&
+          ctx.baseVisibility === 'PRIVATE' &&
+          !ctx.isOwner &&
+          !ctx.membershipRole
+        ) {
+          return res.status(404).json({ ok: false, error: 'NOT_FOUND' });
+        }
+
+        // ==========================
+        // NUEVO T6.4: 403 enriquecido
+        // ==========================
+        return res.status(403).json({
+          ok: false,
+          error: 'FORBIDDEN',
+          action,
+          baseId,
+          message: FORBIDDEN_MESSAGES[action] ?? 'Acceso no autorizado.',
+        });
       }
 
       (req as any).perm = { ctx }; // opcional para reutilizar en el controller
@@ -74,7 +115,15 @@ export function guardGlobal(action: Action) {
     };
 
     if (!can(ctx, action)) {
-      return res.status(403).json({ ok: false, error: 'Forbidden', action });
+      // ==========================
+      // NUEVO T6.4: 403 enriquecido
+      // ==========================
+      return res.status(403).json({
+        ok: false,
+        error: 'FORBIDDEN',
+        action,
+        message: FORBIDDEN_MESSAGES[action] ?? 'Acceso no autorizado.',
+      });
     }
 
     (req as any).perm = { ctx };
