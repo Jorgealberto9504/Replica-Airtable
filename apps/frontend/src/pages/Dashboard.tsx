@@ -87,14 +87,28 @@ export default function Dashboard() {
         }}
       />
 
+      {/* Wrapper general: fondo del contenido central */}
       <div style={{ display: 'flex', minHeight: 'calc(100vh - 70px)', background: '#f9fafb' }}>
-        <WorkspaceSidebar
-          selectedId={selectedWs}
-          onSelect={setSelectedWs}
-          onOpenCreate={() => setOpenCreateWs(true)}
-          canCreate={canCreate}
-        />
+        {/* === Sidebar blanco como el navbar === */}
+        <aside
+          className="ws-sidebar"
+          style={{
+            background: '#ffffff',
+            borderRight: '1px solid var(--border)',
+            width: 260,
+            display: 'flex',          // asegura que el contenido interno pueda ocupar 100% de alto
+            flexDirection: 'column',
+          }}
+        >
+          <WorkspaceSidebar
+            selectedId={selectedWs}
+            onSelect={setSelectedWs}
+            onOpenCreate={() => setOpenCreateWs(true)}
+            canCreate={canCreate}
+          />
+        </aside>
 
+        {/* Contenido principal */}
         <main style={{ flex: 1 }}>
           <BaseGrid
             workspaceId={selectedWs}

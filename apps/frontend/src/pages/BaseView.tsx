@@ -19,6 +19,8 @@ import {
   type GridColumnMeta,
 } from '../api/tables';
 
+import { confirmToast } from '../ui/confirmToast';
+
 export default function BaseView() {
   const nav = useNavigate();
   const { baseId: baseIdStr, tableId: tableIdStr } = useParams();
@@ -91,7 +93,6 @@ export default function BaseView() {
         if (r.defaultTableId) {
           nav(`/bases/${baseId}/t/${r.defaultTableId}`, { replace: true });
         }
-        // si no hay tablas, nos quedamos en /bases/:baseId y mostramos vacío
       } finally {
         if (!cancelled) setResolving(false);
       }
@@ -144,13 +145,26 @@ export default function BaseView() {
     setOpenRename({ open: true, id: tableId });
   }
   async function handleTrash(tableId: number) {
-    if (!confirm('¿Enviar esta tabla a la papelera?')) return;
-    await trashTable(baseId, tableId);
-    await refreshTabs();
-    if (urlTableId === tableId) {
-      const r = await resolveBase(baseId);
-      if (r.defaultTableId) nav(`/bases/${baseId}/t/${r.defaultTableId}`, { replace: true });
-      else nav(`/bases/${baseId}`, { replace: true });
+    const t = tabs.find(x => x.id === tableId);
+    const ok = await confirmToast({
+      title: 'Enviar a papelera',
+      body: <>¿Quieres enviar la tabla <b>{t?.name ?? 'sin nombre'}</b> a la papelera?</>,
+      confirmText: 'Enviar',
+      cancelText: 'Cancelar',
+      danger: true,
+    });
+    if (!ok) return;
+
+    try {
+      await trashTable(baseId, tableId);
+      await refreshTabs();
+      if (urlTableId === tableId) {
+        const r = await resolveBase(baseId);
+        if (r.defaultTableId) nav(`/bases/${baseId}/t/${r.defaultTableId}`, { replace: true });
+        else nav(`/bases/${baseId}`, { replace: true });
+      }
+    } catch (e: any) {
+      alert(e?.message ?? 'No se pudo enviar la tabla a la papelera');
     }
   }
   async function handleReorder(orderedIds: number[]) {
@@ -193,10 +207,17 @@ export default function BaseView() {
     }
   }
 
+  /* >>> Cambiado aquí: usa degradado MBQ y formato pill/pequeño <<< */
   const headerRight = (
     <div style={{ display: 'flex', gap: 8 }}>
       {canManage && (
-        <button className="btn" onClick={() => setOpenMembers(true)}>Miembros</button>
+        <button
+          className="btn primary pill sm"
+          onClick={() => setOpenMembers(true)}
+          title="Gestionar miembros"
+        >
+          Miembros
+        </button>
       )}
     </div>
   );

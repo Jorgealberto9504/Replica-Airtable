@@ -25,12 +25,22 @@ export default function TabsBar({
   onTrash,
   onReorder,
 }: Props) {
-  const safeTabs = Array.isArray(tabs) ? tabs : []; // 🔒 robusto
+  const safeTabs = Array.isArray(tabs) ? tabs : [];
 
+  // === menú contextual ===
   const [menuFor, setMenuFor] = useState<number | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left?: number; right?: number }>({ top: 0, left: 0 });
+  function openMenu(e: React.MouseEvent, tabId: number) {
+    setMenuFor(tabId);
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const gap = 6;
+    const desiredLeft = r.left;
+    const fitsRight = desiredLeft + 220 < window.innerWidth - 8;
+    setMenuPos({ top: r.bottom + gap, ...(fitsRight ? { left: desiredLeft } : { right: window.innerWidth - r.right }) });
+  }
+  function closeMenu() { setMenuFor(null); }
 
-  // Scroller con flechas
+  // === scroller + flechas ===
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [showLeft, setShowLeft]   = useState(false);
   const [showRight, setShowRight] = useState(false);
@@ -47,52 +57,32 @@ export default function TabsBar({
 
   useEffect(() => {
     updateArrows();
-    const onResize = () => updateArrows();
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    const onR = () => updateArrows();
+    window.addEventListener('resize', onR);
+    return () => window.removeEventListener('resize', onR);
   }, []);
-
   useEffect(() => { updateArrows(); }, [safeTabs]);
 
-  // Menú contextual
-  function openMenu(e: React.MouseEvent, tabId: number) {
-    setMenuFor(tabId);
-    const btn = e.currentTarget as HTMLButtonElement;
-    const r = btn.getBoundingClientRect();
-    const gap = 6;
-    const desiredLeft = r.left;
-    const fitsRight = desiredLeft + 220 < window.innerWidth - 8;
-    setMenuPos({
-      top: r.bottom + gap,
-      ...(fitsRight ? { left: desiredLeft } : { right: window.innerWidth - r.right }),
-    });
-  }
-  function closeMenu() { setMenuFor(null); }
-
-  // Drag & drop
+  // === drag & drop ===
   function onDragStart(e: React.DragEvent<HTMLButtonElement>, id: number) {
     e.dataTransfer.setData('text/plain', String(id));
     e.dataTransfer.effectAllowed = 'move';
   }
-  function onDragOver(e: React.DragEvent<HTMLDivElement>) {
-    if (!onReorder) return;
-    e.preventDefault();
-  }
+  function onDragOver(e: React.DragEvent<HTMLDivElement>) { if (onReorder) e.preventDefault(); }
   async function onDrop(e: React.DragEvent<HTMLDivElement>, overId: number) {
     if (!onReorder) return;
     e.preventDefault();
     const draggedId = Number(e.dataTransfer.getData('text/plain'));
     if (!draggedId || draggedId === overId) return;
 
-    const ids = sortedTabs.map(t => t.id);
+    const ids  = sortedTabs.map(t => t.id);
     const from = ids.indexOf(draggedId);
-    const to = ids.indexOf(overId);
+    const to   = ids.indexOf(overId);
     if (from < 0 || to < 0) return;
 
     const next = [...ids];
     next.splice(from, 1);
     next.splice(to, 0, draggedId);
-
     await onReorder(next);
   }
 
@@ -105,48 +95,45 @@ export default function TabsBar({
     <div className="tabs-wrap">
       {/* Flecha izquierda */}
       {showLeft && (
-        <button className="tabs-scroll-btn left" aria-label="Ver pestañas anteriores" onClick={() => scrollByPx(-280)}>
-          ‹
-        </button>
+        <button
+          className="tabs-scroll-btn left"
+          aria-label="Ver pestañas anteriores"
+          onClick={() => scrollByPx(-280)}
+        >‹</button>
       )}
 
       {/* Scroller */}
       <div className="tabs-scroller" ref={scrollerRef} onScroll={updateArrows}>
         <div className="tabs-strip">
-          {sortedTabs.map((t) => {
+          {sortedTabs.map(t => {
             const isActive = t.id === activeId;
             return (
               <div
                 key={t.id}
+                className={`tab-slot${isActive ? ' is-active' : ''}`}
                 onDragOver={onDragOver}
                 onDrop={(e) => onDrop(e, t.id)}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
               >
                 <button
                   draggable={!!onReorder}
                   onDragStart={(e) => onDragStart(e, t.id)}
-                  className="chip"
+                  className="tab-btn"
                   aria-pressed={isActive}
                   onClick={() => onSelect(t.id)}
-                  style={{
-                    padding: isActive ? '9px 16px' : '6px 12px',
-                    fontWeight: isActive ? 800 : 600,
-                    border: isActive ? '1px solid #c7d2fe' : '1px solid #e5e7eb',
-                    transform: isActive ? 'translateY(-2px)' : 'none',
-                    zIndex: isActive ? 2 : 1,
-                  }}
+                  title={t.name}
                 >
                   {t.name}
                 </button>
 
-                {canManage && (
+                {/* 👇 Solo existe en la pestaña activa */}
+                {canManage && isActive && (
                   <button
-                    className="chip"
-                    aria-label={`Menú de ${t.name}`}
+                    className="tab-menu-btn"
+                    aria-label={`Opciones de ${t.name}`}
                     onClick={(e) => openMenu(e, t.id)}
-                    style={{ padding: '6px 8px' }}
+                    title="Opciones"
                   >
-                    …
+                    ▾
                   </button>
                 )}
               </div>
@@ -154,18 +141,18 @@ export default function TabsBar({
           })}
 
           {canManage && onCreate && (
-            <button className="btn" onClick={onCreate} style={{ marginLeft: 8 }}>
-              + Nueva tabla
-            </button>
+            <button className="tab-action-btn" onClick={onCreate} title="Nueva tabla">+</button>
           )}
         </div>
       </div>
 
       {/* Flecha derecha */}
       {showRight && (
-        <button className="tabs-scroll-btn right" aria-label="Ver pestañas siguientes" onClick={() => scrollByPx(280)}>
-          ›
-        </button>
+        <button
+          className="tabs-scroll-btn right"
+          aria-label="Ver pestañas siguientes"
+          onClick={() => scrollByPx(280)}
+        >›</button>
       )}
 
       {/* Menú contextual */}
@@ -190,12 +177,8 @@ export default function TabsBar({
               padding: 6,
             }}
           >
-            <button className="menu-item" onClick={() => { closeMenu(); onRename(menuFor); }}>
-              Renombrar
-            </button>
-            <button className="menu-item" onClick={() => { closeMenu(); onTrash(menuFor); }}>
-              Enviar a papelera
-            </button>
+            <button className="menu-item" onClick={() => { closeMenu(); onRename(menuFor); }}>Renombrar</button>
+            <button className="menu-item" onClick={() => { closeMenu(); onTrash(menuFor); }}>Enviar a papelera</button>
           </div>
         </>
       )}

@@ -7,7 +7,7 @@ type User = {
   fullName?: string;
   email?: string;
   platformRole?: 'USER' | 'SYSADMIN';
-  canCreateBases?: boolean; // nos sirve para decidir si ve la papelera
+  canCreateBases?: boolean; // decide si ve la papelera
 };
 
 type SearchBoxProps = {
@@ -27,7 +27,7 @@ type Props = {
 export default function Header({ user, onLogout, onOpenRegister, searchBox }: Props) {
   const nav = useNavigate();
   const isAdmin = user?.platformRole === 'SYSADMIN';
-  // 👇 Solo SYSADMIN o creadores ven la opción de "Papelera de reciclaje"
+  // Solo SYSADMIN o creadores ven la opción de "Papelera de reciclaje"
   const canSeeTrash = isAdmin || !!user?.canCreateBases;
 
   // Avatar + dropdown
@@ -46,9 +46,10 @@ export default function Header({ user, onLogout, onOpenRegister, searchBox }: Pr
         display: 'flex',
         alignItems: 'center',
         gap: 12,
-        padding: '12px 16px',
+        padding: '0px 16px',
         background: '#ffffff',
-        borderBottom: '1px solid #e5e7eb',
+        borderBottom: '2px solid #e5e7eb',
+       
         position: 'sticky',
         top: 0,
         zIndex: 10,
@@ -59,7 +60,7 @@ export default function Header({ user, onLogout, onOpenRegister, searchBox }: Pr
         to="/dashboard"
         style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}
       >
-        <img src={logo} alt="MBQ" style={{ height: 56 }} />
+        <img src={logo} alt="MBQ" style={{ height: 80 }} />
       </Link>
 
       {/* Centro: buscador (si se pasa) */}
@@ -120,7 +121,7 @@ export default function Header({ user, onLogout, onOpenRegister, searchBox }: Pr
           {initial}
         </button>
 
-        {/* Overlay para cerrar clic fuera */}
+        {/* Overlay para cerrar clic fuera y menú */}
         {openMenu && (
           <>
             <div
@@ -142,7 +143,7 @@ export default function Header({ user, onLogout, onOpenRegister, searchBox }: Pr
                 overflow: 'hidden',
               }}
             >
-              {/* Header del menú: siempre nombre completo si existe */}
+              {/* Header del menú: nombre completo si existe */}
               <div style={{ padding: 12, borderBottom: '1px solid #e5e7eb' }}>
                 <div style={{ fontWeight: 800 }}>
                   {user?.fullName || user?.email || 'Usuario'}
@@ -152,7 +153,17 @@ export default function Header({ user, onLogout, onOpenRegister, searchBox }: Pr
                 </div>
               </div>
 
-              {/* Opciones */}
+              {/* NUEVO: Gestión de usuarios (solo SYSADMIN) */}
+              {isAdmin && (
+                <button
+                  className="menu-item"
+                  onClick={() => { closeMenu(); nav('/admin/users'); }}
+                >
+                  👥 Gestión de usuarios
+                </button>
+              )}
+
+              {/* Papelera */}
               {canSeeTrash && (
                 <button
                   className="menu-item"

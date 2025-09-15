@@ -381,7 +381,12 @@ export async function deleteBase(baseId: number) {
 
 export async function listTrashedBasesForOwner(ownerId: number) {
   return prisma.base.findMany({
-    where: { ownerId, isTrashed: true },
+    where: {
+      ownerId,
+      isTrashed: true,
+      // ⬇️ no mostrar bases cuyo workspace aún está en papelera
+      OR: [{ workspaceId: null }, { workspace: { isTrashed: false } }],
+    },
     select: {
       id: true,
       name: true,

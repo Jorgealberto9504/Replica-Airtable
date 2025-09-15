@@ -1,4 +1,4 @@
-// apps/frontend/src/router.tsx (o AppRouter.tsx según tu estructura)
+// apps/frontend/src/router.tsx
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -6,7 +6,11 @@ import RequireAuth from './auth/RequireAuth';
 import BaseView from './pages/BaseView';
 import ChangePassword from './pages/ChangePassword';
 import BasesList from './pages/BasesList';
-import TrashView from './pages/TrashView'; // <<<<<< NUEVO
+import TrashView from './pages/TrashView';
+
+// NUEVO: gestión de usuarios (solo SYSADMIN; la page valida el rol)
+import UsersAdminList from './pages/UsersAdminList';
+import UsersAdminDetail from './pages/UsersAdminDetail';
 
 export default function AppRouter() {
   return (
@@ -40,6 +44,24 @@ export default function AppRouter() {
         element={
           <RequireAuth>
             <TrashView />
+          </RequireAuth>
+        }
+      />
+
+      {/* Gestión de usuarios */}
+      <Route
+        path="/admin/users"
+        element={
+          <RequireAuth>
+            <UsersAdminList />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/admin/users/:id"
+        element={
+          <RequireAuth>
+            <UsersAdminDetail />
           </RequireAuth>
         }
       />

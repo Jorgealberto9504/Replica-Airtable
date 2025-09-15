@@ -101,8 +101,6 @@ export async function listAllWorkspacesSysadminCtrl(req: Request, res: Response)
 /**
  * GET /workspaces/:workspaceId
  * Obtiene un workspace por id (excluye papelera).
- * Requiere: requireAuth + guard('base:view') equivalente en tu flujo (si lo agregas).
- * Por ahora solo valida autenticación; autorización sugerida en rutas con guard.
  */
 export async function getWorkspaceCtrl(req: Request, res: Response) {
   try {
@@ -125,7 +123,6 @@ export async function getWorkspaceCtrl(req: Request, res: Response) {
 /**
  * PATCH /workspaces/:workspaceId
  * Actualiza nombre del workspace (no permite si está en papelera).
- * Requiere: requireAuth + guard('schema:manage') equivalente (si lo agregas).
  */
 export async function updateWorkspaceCtrl(req: Request, res: Response) {
   try {
@@ -152,15 +149,14 @@ export async function updateWorkspaceCtrl(req: Request, res: Response) {
 /**
  * DELETE /workspaces/:workspaceId
  * Envía el workspace a la papelera (SOFT DELETE) con cascada a bases y tablas.
- * Requiere: requireAuth + guard('base:delete') equivalente (si lo agregas).
  */
 export async function deleteWorkspaceCtrl(req: Request, res: Response) {
   try {
-    const me = getAuthUser<{ id: number }>(req);
+    const me = getAuthUser<{ id: number; platformRole: 'USER' | 'SYSADMIN' }>(req);
     if (!me) return res.status(401).json({ ok: false, error: 'No autenticado' });
 
     const workspaceId = parseWorkspaceId(req);
-    await deleteWorkspace(workspaceId);
+    await deleteWorkspace(workspaceId, { userId: me.id, isSysadmin: me.platformRole === 'SYSADMIN' });
     return res.json({ ok: true });
   } catch (e: any) {
     return res
@@ -176,7 +172,6 @@ export async function deleteWorkspaceCtrl(req: Request, res: Response) {
 /**
  * GET /workspaces/trash
  * Lista mis workspaces en papelera.
- * Requiere: requireAuth.
  */
 export async function listMyTrashedWorkspacesCtrl(req: Request, res: Response) {
   const me = getAuthUser<{ id: number }>(req);
@@ -189,7 +184,6 @@ export async function listMyTrashedWorkspacesCtrl(req: Request, res: Response) {
 /**
  * POST /workspaces/:workspaceId/restore
  * Restaura un workspace desde papelera (owner o sysadmin).
- * Requiere: requireAuth.
  */
 export async function restoreWorkspaceCtrl(req: Request, res: Response) {
   try {
@@ -212,7 +206,6 @@ export async function restoreWorkspaceCtrl(req: Request, res: Response) {
 /**
  * DELETE /workspaces/:workspaceId/permanent
  * Borrado definitivo de un workspace (owner o sysadmin).
- * Requiere: requireAuth.
  */
 export async function deleteWorkspacePermanentCtrl(req: Request, res: Response) {
   try {
@@ -235,7 +228,6 @@ export async function deleteWorkspacePermanentCtrl(req: Request, res: Response) 
 /**
  * POST /workspaces/trash/empty
  * Vacía mi papelera de workspaces (borrado definitivo).
- * Requiere: requireAuth.
  */
 export async function emptyMyWorkspaceTrashCtrl(req: Request, res: Response) {
   const me = getAuthUser<{ id: number }>(req);
@@ -252,7 +244,6 @@ export async function emptyMyWorkspaceTrashCtrl(req: Request, res: Response) {
 /**
  * GET /workspaces/admin/trash?ownerId=
  * Lista papelera global de workspaces (SOLO SYSADMIN).
- * Requiere: requireAuth + guardGlobal('platform:users:manage') en ruta.
  */
 export async function listAllTrashedWorkspacesCtrl(req: Request, res: Response) {
   const me = getAuthUser<{ platformRole: 'USER' | 'SYSADMIN' }>(req);
@@ -273,7 +264,6 @@ export async function listAllTrashedWorkspacesCtrl(req: Request, res: Response) 
 /**
  * POST /workspaces/admin/trash/purge?days=30
  * Purga global de workspaces en papelera con antigüedad >= days (SOLO SYSADMIN).
- * Requiere: requireAuth + guardGlobal('platform:users:manage') en ruta.
  */
 export async function purgeWorkspacesTrashCtrl(req: Request, res: Response) {
   const me = getAuthUser<{ platformRole: 'USER' | 'SYSADMIN' }>(req);

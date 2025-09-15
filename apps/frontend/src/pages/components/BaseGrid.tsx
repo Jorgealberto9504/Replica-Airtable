@@ -15,6 +15,7 @@ import {
 
 // 🔐 sesión/usuario para controlar permisos
 import { useAuth } from '../../auth/AuthContext';
+import { confirmToast } from '../../ui/confirmToast';
 
 type GridItem = BaseItem & { ownerName?: string };
 
@@ -247,7 +248,15 @@ export default function BaseGrid({
     const b = items.find(x => x.id === id);
     if (!b || !canManageBase(b)) return;
 
-    if (!confirm('¿Enviar esta base a la papelera?')) return;
+    const ok = await confirmToast({
+      title: 'Enviar a papelera',
+      body: <>¿Enviar la base <b>{b.name}</b> a la papelera?</>,
+      confirmText: 'Enviar',
+      cancelText: 'Cancelar',
+      danger: true,
+    });
+    if (!ok) return;
+
     try {
       await deleteBase(id);
     } catch (e: any) {

@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 // Cliente HTTP del proyecto (usa VITE_API_URL y `credentials: 'include'` para cookies).
 import { postJSON } from '../api/http';
 
-// Asset del logo que se usa como marca de agua de fondo en la pantalla de Login.
+// Asset del logo
 import logo from '../assets/mbq-logo.png';
 
 // ====== Tipo de la respuesta que esperamos del backend al hacer /auth/login ======
@@ -18,14 +18,13 @@ type LoginResp = {
     email: string;
     fullName: string;
     platformRole: 'USER' | 'SYSADMIN';
-    mustChangePassword: boolean; // si es true, en el futuro podemos forzar flujo de cambio de password
-    canCreateBases?: boolean;     // añadido por consistencia con lo que expone /auth/me
+    mustChangePassword: boolean;
+    canCreateBases?: boolean;
   };
 };
 
 // ====== Componente principal de Login ======
 export default function Login() {
-  // Hook de navegación para redirigir después de un login exitoso
   const nav = useNavigate();
 
   // ====== Estado local del formulario ======
@@ -40,14 +39,12 @@ export default function Login() {
     setErr(null);
     setLoading(true);
     try {
-      // Normalizamos los valores antes de enviarlos
       const resp = await postJSON<LoginResp>('/auth/login', {
-        email: email.trim(),     // si algún día decides forzar lowercase, usa .toLowerCase()
+        email: email.trim(),
         password: password.trim()
       });
 
       if (resp.ok && resp.user) {
-        // (opcional) golpe rápido a /auth/me para “despertar” la cookie en dev
         try {
           await fetch(
             `${import.meta.env.VITE_API_URL ?? 'http://localhost:8080'}/auth/me`,
@@ -55,18 +52,13 @@ export default function Login() {
           );
         } catch {}
 
-        // <<< REDIRECCIÓN INMEDIATA SEGÚN mustChangePassword >>>
         if (resp.user.mustChangePassword) {
-          // a la pantalla especial de cambio de contraseña (sin recarga dura)
           nav('/change-password', { replace: true });
           return;
         }
-
-        // si no debe cambiar password → al dashboard (recarga dura para asegurar cookie)
         window.location.href = '/dashboard';
         return;
       }
-
       setErr('Credenciales inválidas');
     } catch (e: any) {
       setErr(e?.message ?? 'Error de conexión');
@@ -77,57 +69,56 @@ export default function Login() {
 
   // ====== Render ======
   return (
-    <div className="login-page">
-      {/* Marca de agua a pantalla completa (el CSS se encarga de cubrir y centrar) */}
-      <div
-        className="login-bg"
-        style={{ backgroundImage: `url(${logo})` }}
-        aria-hidden="true" // decorativo: no lo leen los lectores de pantalla
-      />
+    <div className="auth-page">
+      <div className="auth-card">
+        {/* Panel izquierdo: gradiente + logo */}
+        <aside className="auth-illustration">
+          <img src={logo} alt="MBQ" className="auth-logo" />
+          <div className="auth-illu-copy">
+            <h2>Bienvenido a MBQ</h2>
+            <p>Organiza, colabora y acelera tu trabajo.</p>
+          </div>
+        </aside>
 
-      {/* Tarjeta de login */}
-      <div className="card login-card">
-        <h1 className="title" style={{ textAlign: 'center' }}>Iniciar sesión</h1>
+        {/* Panel derecho: formulario (misma lógica de siempre) */}
+        <section className="auth-form">
+          <h1 className="auth-title">Iniciar sesión</h1>
 
-        {/* Bloque de error si existe */}
-        {err && <div className="alert error" role="alert">{err}</div>}
+          {err && <div className="alert error" role="alert">{err}</div>}
 
-        {/* Formulario controlado */}
-        <form onSubmit={handleSubmit} className="form" style={{ display: 'grid', gap: 12 }}>
-          {/* Campo Email */}
-          <label className="label" htmlFor="email">Email</label>
-          <input
-            id="email"
-            className="input"
-            type="email"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            placeholder="tucorreo@mbqinc.com"
-            autoComplete="username"
-            spellCheck={false}
-            required
-            disabled={loading}
-          />
+          <form onSubmit={handleSubmit} className="form" style={{ display: 'grid', gap: 12 }}>
+            <label className="label" htmlFor="email">Email</label>
+            <input
+              id="email"
+              className="input"
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="tucorreo@mbqinc.com"
+              autoComplete="username"
+              spellCheck={false}
+              required
+              disabled={loading}
+            />
 
-          {/* Campo Password */}
-          <label className="label" htmlFor="password">Contraseña</label>
-          <input
-            id="password"
-            className="input"
-            type="password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            placeholder="••••••••"
-            autoComplete="current-password"
-            required
-            disabled={loading}
-          />
+            <label className="label" htmlFor="password">Contraseña</label>
+            <input
+              id="password"
+              className="input"
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="••••••••"
+              autoComplete="current-password"
+              required
+              disabled={loading}
+            />
 
-          {/* Botón de envío: deshabilitado mientras loading=true */}
-          <button className="btn primary" type="submit" disabled={loading}>
-            {loading ? 'Entrando…' : 'Entrar'}
-          </button>
-        </form>
+            <button className="btn primary pill" type="submit" disabled={loading}>
+              {loading ? 'Entrando…' : 'Entrar'}
+            </button>
+          </form>
+        </section>
       </div>
     </div>
   );

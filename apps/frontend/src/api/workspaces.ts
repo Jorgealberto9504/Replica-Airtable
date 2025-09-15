@@ -1,5 +1,5 @@
 // apps/frontend/src/api/workspaces.ts
-import { getJSON, postJSON } from './http';
+import { getJSON, postJSON, API_URL } from './http';
 
 /* Tipos que usan los componentes */
 export type Workspace = {
@@ -29,6 +29,42 @@ export function listMyWorkspaces() {
 // POST /workspaces  { name }
 export function createWorkspace(input: { name: string }) {
   return postJSON<{ ok: boolean; workspace: Workspace }>('/workspaces', input);
+}
+
+// PATCH /workspaces/:workspaceId  { name }
+export async function updateWorkspace(workspaceId: number, input: { name: string }) {
+  const res = await fetch(`${API_URL}/workspaces/${workspaceId}`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    let msg = `Error ${res.status}`;
+    try {
+      const b = await res.json();
+      if (b?.error) msg = b.error;
+    } catch {}
+    throw new Error(msg);
+  }
+  return (await res.json()) as { ok: boolean; workspace: Workspace };
+}
+
+// DELETE /workspaces/:workspaceId (soft delete → papelera)
+export async function deleteWorkspace(workspaceId: number) {
+  const res = await fetch(`${API_URL}/workspaces/${workspaceId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    let msg = `Error ${res.status}`;
+    try {
+      const b = await res.json();
+      if (b?.error) msg = b.error;
+    } catch {}
+    throw new Error(msg);
+  }
+  return { ok: true } as const;
 }
 
 export function listAccessibleBases() {

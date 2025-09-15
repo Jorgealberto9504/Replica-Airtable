@@ -1,6 +1,7 @@
 // apps/backend/src/services/workspaces.service.ts
 import { prisma } from './db.js';
 import { Prisma } from '@prisma/client';
+import { restoreAllTablesForBaseInTx } from './tables.service.js';
 
 /** ========= Helpers de error (duplicados) ========= */
 function rethrowConflictIfDuplicateWorkspace(e: unknown) {
@@ -138,24 +139,90 @@ export async function updateWorkspace(workspaceId: number, patch: { name?: strin
 
 /** ========= Papelera Workspaces (con cascada bases+tablas) ========= */
 
-/** Enviar workspace a papelera + cascada: bases y tablas a papelera */
-export async function deleteWorkspace(workspaceId: number) {
-  // 1) Marcar workspace en papelera
-  await prisma.workspace.update({
+/**
+ * Enviar workspace a papelera con cascada:
+ * - Renombra en caso de conflicto de unicidad (tanto workspace como bases).
+ * - Requiere actor (owner o sysadmin).
+ */
+export async function deleteWorkspace(
+  workspaceId: number,
+  actor: { userId: number; isSysadmin: boolean }
+) {
+  // Validación de pertenencia/permiso
+  const ws = await prisma.workspace.findUnique({
     where: { id: workspaceId },
-    data: { isTrashed: true, trashedAt: new Date() },
+    select: { id: true, ownerId: true, isTrashed: true, name: true },
   });
+  if (!ws) {
+    const err: any = new Error('Workspace no encontrado');
+    err.status = 404;
+    throw err;
+  }
+  if (!actor.isSysadmin && actor.userId !== ws.ownerId) {
+    const err: any = new Error('FORBIDDEN');
+    err.status = 403;
+    throw err;
+  }
+  if (ws.isTrashed) return; // idempotente
 
-  // 2) Cascada: bases del workspace a papelera
-  await prisma.base.updateMany({
-    where: { workspaceId, isTrashed: false },
-    data: { isTrashed: true, trashedAt: new Date() },
-  });
+  await prisma.$transaction(async (tx) => {
+    // 1) Workspace → papelera (rename si hay conflicto)
+    try {
+      await tx.workspace.update({
+        where: { id: workspaceId },
+        data: { isTrashed: true, trashedAt: new Date() },
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+        await tx.workspace.update({
+          where: { id: workspaceId },
+          data: {
+            name: `${ws.name} (deleted ${stamp})`,
+            isTrashed: true,
+            trashedAt: new Date(),
+          },
+        });
+      } else {
+        throw e;
+      }
+    }
 
-  // 3) Cascada: tablas de esas bases a papelera
-  await prisma.tableDef.updateMany({
-    where: { base: { workspaceId }, isTrashed: false },
-    data: { isTrashed: true, trashedAt: new Date() },
+    // 2) Bases activas del workspace → papelera (rename si hay conflicto)
+    const bases = await tx.base.findMany({
+      where: { workspaceId, isTrashed: false },
+      select: { id: true, name: true },
+      orderBy: { id: 'asc' },
+    });
+
+    for (const b of bases) {
+      try {
+        await tx.base.update({
+          where: { id: b.id },
+          data: { isTrashed: true, trashedAt: new Date() },
+        });
+      } catch (e) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+          const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+          await tx.base.update({
+            where: { id: b.id },
+            data: {
+              name: `${b.name} (deleted ${stamp})`,
+              isTrashed: true,
+              trashedAt: new Date(),
+            },
+          });
+        } else {
+          throw e;
+        }
+      }
+
+      // 3) Tablas activas de esa base → papelera
+      await tx.tableDef.updateMany({
+        where: { baseId: b.id, isTrashed: false },
+        data: { isTrashed: true, trashedAt: new Date() },
+      });
+    }
   });
 }
 
@@ -197,14 +264,19 @@ export async function listTrashedWorkspacesForAdmin(params?: { ownerId?: number 
   });
 }
 
-/** Restaurar workspace + cascada: bases y tablas */
+/**
+ * Restaurar workspace + cascada:
+ * - Restaura workspace
+ * - Restaura bases (si hay conflicto de nombre → 409)
+ * - Reposiciona tablas de cada base restaurada al final (usa helper transaccional)
+ */
 export async function restoreWorkspace(
   workspaceId: number,
   actor: { userId: number; isSysadmin: boolean }
 ) {
   const ws = await prisma.workspace.findUnique({
     where: { id: workspaceId },
-    select: { id: true, ownerId: true, isTrashed: true },
+    select: { id: true, ownerId: true, isTrashed: true, name: true },
   });
   if (!ws || !ws.isTrashed) {
     const err: any = new Error('Workspace no encontrado o no está en papelera');
@@ -217,34 +289,46 @@ export async function restoreWorkspace(
     throw err;
   }
 
-  // 1) Restaurar workspace
-  const restored = await prisma.workspace.update({
-    where: { id: workspaceId },
-    data: { isTrashed: false, trashedAt: null },
-    select: {
-      id: true,
-      name: true,
-      ownerId: true,
-      createdAt: true,
-      updatedAt: true,
-      isTrashed: true,
-      trashedAt: true,
-    },
-  });
+  try {
+    return await prisma.$transaction(async (tx) => {
+      // 1) Restaurar workspace
+      const restored = await tx.workspace.update({
+        where: { id: workspaceId },
+        data: { isTrashed: false, trashedAt: null },
+        select: {
+          id: true,
+          name: true,
+          ownerId: true,
+          createdAt: true,
+          updatedAt: true,
+          isTrashed: true,
+          trashedAt: true,
+        },
+      });
 
-  // 2) Restaurar bases del workspace
-  await prisma.base.updateMany({
-    where: { workspaceId, isTrashed: true },
-    data: { isTrashed: false, trashedAt: null },
-  });
+      // 2) Bases en papelera de este workspace → activas
+      const toRestore = await tx.base.findMany({
+        where: { workspaceId, isTrashed: true },
+        select: { id: true },
+        orderBy: { trashedAt: 'asc' },
+      });
 
-  // 3) Restaurar tablas de esas bases
-  await prisma.tableDef.updateMany({
-    where: { base: { workspaceId }, isTrashed: true },
-    data: { isTrashed: false, trashedAt: null },
-  });
+      for (const b of toRestore) {
+        // Restaurar base (si duplica nombre activo ⇒ P2002 → 409)
+        await tx.base.update({
+          where: { id: b.id },
+          data: { isTrashed: false, trashedAt: null },
+        });
 
-  return restored;
+        // 3) Reposicionar tablas restauradas al final
+        await restoreAllTablesForBaseInTx(tx, b.id);
+      }
+
+      return restored;
+    });
+  } catch (e) {
+    rethrowConflictIfDuplicateWorkspace(e);
+  }
 }
 
 /** Borrado definitivo de workspace (solo si está en papelera) */

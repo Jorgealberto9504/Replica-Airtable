@@ -1,4 +1,3 @@
-// apps/frontend/src/pages/TrashView.tsx
 import { useEffect, useState } from 'react';
 import Header from '../components/Header';
 import { useAuth } from '../auth/AuthContext';
@@ -10,6 +9,7 @@ import {
   listAllTrashedTablesAdmin, restoreTableAdmin, deleteTablePermanentAdmin,
 } from '../api/trash';
 import { listBases } from '../api/bases';
+import { confirmToast } from '../ui/confirmToast';
 
 type Tab = 'workspaces' | 'bases' | 'tables';
 
@@ -96,9 +96,14 @@ export default function TrashView() {
 
   // Vaciar TODA la papelera de tablas (todas las bases representadas en la lista)
   async function emptyAllTablesTrash() {
-    if (!confirm('¿Vaciar por completo la papelera de tablas? Esta acción borra DEFINITIVAMENTE todas las tablas listadas.')) {
-      return;
-    }
+    const ok = await confirmToast({
+      title: 'Vaciar papelera de tablas',
+      body: 'Se eliminarán DEFINITIVAMENTE todas las tablas listadas. Esta acción no se puede deshacer.',
+      confirmText: 'Vaciar',
+      cancelText: 'Cancelar',
+      danger: true,
+    });
+    if (!ok) return;
 
     if (isAdmin) {
       // Admin: borra tabla por tabla con endpoint admin
@@ -194,7 +199,14 @@ export default function TrashView() {
                           Restaurar
                         </button>
                         <button className="btn danger" onClick={async () => {
-                          if (!confirm('¿Borrar definitivamente este workspace?')) return;
+                          const ok = await confirmToast({
+                            title: 'Borrar definitivamente',
+                            body: <>Se eliminará el workspace <b>{w.name}</b> y no se podrá recuperar.</>,
+                            confirmText: 'Borrar',
+                            cancelText: 'Cancelar',
+                            danger: true,
+                          });
+                          if (!ok) return;
                           await deleteWorkspacePermanent(w.id); await loadWorkspaces();
                         }}>
                           Borrar definitivo
@@ -206,7 +218,14 @@ export default function TrashView() {
 
                 <div className="pagination">
                   <button className="btn danger" onClick={async () => {
-                    if (!confirm('¿Vaciar por completo la papelera de workspaces?')) return;
+                    const ok = await confirmToast({
+                      title: 'Vaciar papelera de workspaces',
+                      body: 'Se eliminarán definitivamente todos los workspaces de tu papelera.',
+                      confirmText: 'Vaciar',
+                      cancelText: 'Cancelar',
+                      danger: true,
+                    });
+                    if (!ok) return;
                     await emptyWorkspaceTrash(); await loadWorkspaces();
                   }}>
                     Vaciar papelera de workspaces
@@ -240,7 +259,14 @@ export default function TrashView() {
                           Restaurar
                         </button>
                         <button className="btn danger" onClick={async () => {
-                          if (!confirm('¿Borrar definitivamente esta base?')) return;
+                          const ok = await confirmToast({
+                            title: 'Borrar definitivamente',
+                            body: <>¿Eliminar la base <b>{b.name}</b> de forma permanente?</>,
+                            confirmText: 'Borrar',
+                            cancelText: 'Cancelar',
+                            danger: true,
+                          });
+                          if (!ok) return;
                           await deleteBasePermanent(b.id); await loadBases();
                         }}>
                           Borrar definitivo
@@ -252,7 +278,14 @@ export default function TrashView() {
 
                 <div className="pagination">
                   <button className="btn danger" onClick={async () => {
-                    if (!confirm('¿Vaciar por completo la papelera de bases?')) return;
+                    const ok = await confirmToast({
+                      title: 'Vaciar papelera de bases',
+                      body: 'Se eliminarán definitivamente todas las bases de tu papelera.',
+                      confirmText: 'Vaciar',
+                      cancelText: 'Cancelar',
+                      danger: true,
+                    });
+                    if (!ok) return;
                     await emptyMyBaseTrash(); await loadBases();
                   }}>
                     Vaciar papelera de bases
@@ -296,7 +329,14 @@ export default function TrashView() {
                         <button
                           className="btn danger"
                           onClick={async () => {
-                            if (!confirm('¿Borrar definitivamente esta tabla?')) return;
+                            const ok = await confirmToast({
+                              title: 'Borrar definitivamente',
+                              body: <>¿Eliminar la tabla <b>{t.name}</b> de forma permanente?</>,
+                              confirmText: 'Borrar',
+                              cancelText: 'Cancelar',
+                              danger: true,
+                            });
+                            if (!ok) return;
                             if (t.isAdmin) await deleteTablePermanentAdmin(t.baseId, t.id);
                             else await deleteTablePermanent(t.baseId, t.id);
                             await loadTablesAll();
