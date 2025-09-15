@@ -440,8 +440,8 @@ export default function BaseGrid({
                   >
                     Cambiar privacidad
                   </button>
-                  <button className="menu-item" onClick={() => sendToTrash(menuFor!)}>
-                    Enviar a papelera
+                  <button className="menu-item-eliminar" onClick={() => sendToTrash(menuFor!)}>
+                    Eliminar
                   </button>
                 </>
               );

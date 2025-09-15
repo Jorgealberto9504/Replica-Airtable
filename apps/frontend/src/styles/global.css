@@ -92,7 +92,6 @@ body {
 .btn.primary:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(18,181,212,.25); }
 
 /* 🆕 utilidades para “Miembros” (y cualquier otro) */
-.btn.pill { border-radius: 999px; }
 .btn.sm   { padding: 6px 12px; font-size: 12px; line-height: 1.1; }
 
 /* Compat (si quedaron viejas clases) */
@@ -301,11 +300,26 @@ body {
   cursor: pointer;
   font-weight: 600;
 }
+ .menu-item-eliminar {
+  width: 100%;
+  text-align: left;
+  background: #fff;
+  border: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--error);
+
+ } 
+
 .menu-item:hover { background: #f3f4f6; }
+.menu-item-eliminar:hover { background: #f3f4f6; }
+
 
 /* ===== Members modal ===== */
-.invite-row { display: grid; grid-template-columns: 1fr 160px 120px; gap: 8px; margin-bottom: 12px; }
-.members-list { display: grid; gap: 8px; max-height: 50vh; overflow: auto; }
+.invite-row { display: grid; grid-template-columns: 1fr 160px 120px; gap: 8px; margin-bottom: 12px;padding: 15px 15px; }
+.members-list { display: grid; gap: 8px; max-height: 50vh; overflow: auto; padding: 8px 10px;}
 .member-row {
   display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center;
   border: 1px solid #e5e7eb; border-radius: 10px; padding: 8px 10px; background: #fff;

@@ -1,13 +1,10 @@
-// -----------------------------------------------------------------------------
-// Modal simple para crear Workspace (estilo unificado)
-// -----------------------------------------------------------------------------
 import { useState } from 'react';
 import { createWorkspace } from '../../api/workspaces';
 
 type Props = {
   open: boolean;
   onClose: () => void;
-  onCreated?: () => void; // refrescar listas
+  onCreated?: () => void; // opcional: por si el padre quiere refrescar
 };
 
 export default function CreateWorkspaceModal({ open, onClose, onCreated }: Props) {
@@ -21,8 +18,17 @@ export default function CreateWorkspaceModal({ open, onClose, onCreated }: Props
     if (!name.trim()) return;
     setSubmitting(true);
     try {
-      await createWorkspace({ name: name.trim() });
+      // ← hacemos el POST y obtenemos el workspace creado
+      const res = await createWorkspace({ name: name.trim() });
+      const ws = res.workspace;
+
+      // ← avisamos globalmente que se creó un workspace nuevo
+      window.dispatchEvent(new CustomEvent('workspace:created', { detail: ws }));
+
+      // (opcional) callback del padre si lo usa
       onCreated?.();
+
+      // UI
       onClose();
       setName('');
     } catch (err: any) {

@@ -8,7 +8,7 @@ import { confirmToast } from '../../ui/confirmToast';
 type Props = {
   selectedId: number | null;
   onSelect: (id: number) => void;
-  onOpenCreate?: () => void; // botón "Nuevo workspace" (si tienes permisos)
+  onOpenCreate?: () => void;
   canCreate?: boolean;
 };
 
@@ -21,19 +21,16 @@ export default function WorkspaceSidebar({
   const [items, setItems] = useState<Workspace[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Menú contextual
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number }>({ top: -9999, left: -9999 });
 
-  // Modal renombrar
   const [renameTarget, setRenameTarget] = useState<Workspace | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // refs
-  const scrollRef = useRef<HTMLDivElement | null>(null);                    // contenedor scrollable
-  const btnRefs = useRef<Map<number, HTMLButtonElement>>(new Map());        // botón kebab por workspace
-  const menuRef = useRef<HTMLDivElement | null>(null);                      // menú actual
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const btnRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   async function reload() {
     const resp = await listMyWorkspaces();
@@ -48,6 +45,21 @@ export default function WorkspaceSidebar({
         setLoading(false);
       }
     })();
+  }, []);
+
+  // 👇 NUEVO: escuchar creación de workspace y actualizar la lista al instante
+  useEffect(() => {
+    const onCreated = (ev: Event) => {
+      const ws = (ev as CustomEvent<Workspace>).detail;
+      if (!ws) return;
+      setItems((prev) => {
+        // evita duplicados si ya está en la lista
+        if (prev.some((x) => x.id === ws.id)) return prev;
+        return [ws, ...prev];
+      });
+    };
+    window.addEventListener('workspace:created', onCreated as EventListener);
+    return () => window.removeEventListener('workspace:created', onCreated as EventListener);
   }, []);
 
   // --- helpers de posicionamiento del menú ---
@@ -74,7 +86,6 @@ export default function WorkspaceSidebar({
     setMenuPos(computeMenuPosition(btn, menuRef.current || undefined));
   }
 
-  // Reposicionar cuando el menú abre o cambia tamaño
   useLayoutEffect(() => {
     if (openMenuId == null) return;
     repositionMenu();
@@ -82,7 +93,6 @@ export default function WorkspaceSidebar({
     return () => clearTimeout(t);
   }, [openMenuId]);
 
-  // Reposicionar en scroll/resize y cerrar con ESC
   useEffect(() => {
     if (openMenuId == null) return;
     const onWindow = () => repositionMenu();
@@ -99,7 +109,6 @@ export default function WorkspaceSidebar({
     };
   }, [openMenuId]);
 
-  // Cerrar con click-afuera
   useEffect(() => {
     function onDocMouseDown(e: MouseEvent) {
       if (openMenuId == null) return;
@@ -149,7 +158,7 @@ export default function WorkspaceSidebar({
     try {
       await deleteWorkspace(w.id);
       await reload();
-      if (selectedId === w.id) onSelect(0); // volver a Explorar si estaba seleccionado
+      if (selectedId === w.id) onSelect(0);
     } catch (e: any) {
       alert(e?.message ?? 'No se pudo eliminar el workspace');
     } finally {
@@ -158,24 +167,10 @@ export default function WorkspaceSidebar({
   }
 
   return (
-    // Contenedor interno a 100% alto para poder anclar el botón abajo
-    <div
-      style={{
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        padding: 12,
-        gap: 8,
-      }}
-    >
-      {/* Región scrollable con los items */}
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: 12, gap: 8 }}>
       <div ref={scrollRef} style={{ overflowY: 'auto', paddingRight: 4 }}>
-        {/* Item fijo: Explorar (id virtual = 0) */}
         <div
-          onClick={() => {
-            setOpenMenuId(null);
-            onSelect(0);
-          }}
+          onClick={() => { setOpenMenuId(null); onSelect(0); }}
           style={{
             padding: '8px 12px',
             borderRadius: 8,
@@ -186,12 +181,9 @@ export default function WorkspaceSidebar({
           }}
         >
           Explorar
-          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
-            Miembro + públicas
-          </div>
+          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>Miembro + públicas</div>
         </div>
 
-        {/* Workspaces reales */}
         {loading ? (
           <div style={{ color: '#6b7280', padding: 8 }}>Cargando…</div>
         ) : items.length === 0 ? (
@@ -200,10 +192,7 @@ export default function WorkspaceSidebar({
           items.map((w) => (
             <div
               key={w.id}
-              onClick={() => {
-                setOpenMenuId(null);
-                onSelect(w.id);
-              }}
+              onClick={() => { setOpenMenuId(null); onSelect(w.id); }}
               style={{
                 position: 'relative',
                 display: 'flex',
@@ -218,15 +207,10 @@ export default function WorkspaceSidebar({
               }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>{w.name}</div>
-
-              {/* Botón kebab (3 puntitos) */}
               <button
                 aria-label="Opciones"
                 title="Opciones"
-                ref={(el) => {
-                  if (el) btnRefs.current.set(w.id, el);
-                  else btnRefs.current.delete(w.id);
-                }}
+                ref={(el) => { if (el) btnRefs.current.set(w.id, el); else btnRefs.current.delete(w.id); }}
                 onClick={(e) => {
                   e.stopPropagation();
                   setOpenMenuId((prev) => {
@@ -236,19 +220,13 @@ export default function WorkspaceSidebar({
                   });
                 }}
                 style={{
-                  border: 'none',
-                  background: 'transparent',
-                  cursor: 'pointer',
-                  fontSize: 18,
-                  lineHeight: 1,
-                  padding: '2px 6px',
-                  borderRadius: 6,
+                  border: 'none', background: 'transparent', cursor: 'pointer',
+                  fontSize: 18, lineHeight: 1, padding: '2px 6px', borderRadius: 6,
                 }}
               >
                 ⋮
               </button>
 
-              {/* ——— MENÚ EN PORTAL (FUERA DEL CONTENEDOR SCROLL) ——— */}
               {openMenuId === w.id &&
                 createPortal(
                   <div
@@ -262,16 +240,13 @@ export default function WorkspaceSidebar({
                       background: 'white',
                       border: '1px solid rgba(0,0,0,0.08)',
                       borderRadius: 10,
-                      boxShadow:
-                        '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)',
+                      boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)',
                       zIndex: 3000,
                       overflow: 'hidden',
                     }}
                   >
                     <MenuItem onClick={() => openRenameModal(w)}>Cambiar nombre</MenuItem>
-                    <MenuItem danger onClick={() => handleDelete(w)}>
-                      Eliminar
-                    </MenuItem>
+                    <MenuItem danger onClick={() => handleDelete(w)}>Eliminar</MenuItem>
                   </div>,
                   document.body
                 )}
@@ -280,128 +255,62 @@ export default function WorkspaceSidebar({
         )}
       </div>
 
-      {/* Footer fijo abajo con botón (si procede) */}
       {canCreate && onOpenCreate && (
-        <div
-          style={{
-            marginTop: 'auto',
-            paddingTop: 10,
-            borderTop: '1px solid var(--border)',
-            marginBottom: 50,
-          }}
-        >
+        <div style={{ marginTop: 'auto', paddingTop: 10, borderTop: '1px solid var(--border)', marginBottom: 50 }}>
           <button
             onClick={onOpenCreate}
             className="btn primary"
-            style={{
-              width: '100%',
-              textAlign: 'center',
-              borderRadius: 10,
-              padding: '10px 12px',
-              fontWeight: 700,
-            }}
+            style={{ width: '100%', textAlign: 'center', borderRadius: 10, padding: '10px 12px', fontWeight: 700 }}
           >
             + Nuevo workspace
           </button>
         </div>
       )}
 
-      {/* ===== MODAL RENOMBRAR (igual patrón que el de bases) ===== */}
       {renameTarget &&
         createPortal(
           <>
-            {/* overlay */}
             <div
               onClick={() => !saving && setRenameTarget(null)}
-              style={{
-                position: 'fixed',
-                inset: 0,
-                background: 'rgba(0,0,0,0.35)',
-                zIndex: 3500,
-              }}
+              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 3500 }}
             />
-            {/* modal */}
             <div
               role="dialog"
               aria-modal="true"
-              style={{
-                position: 'fixed',
-                zIndex: 3600,
-                inset: 0,
-                display: 'grid',
-                placeItems: 'center',
-                padding: 16,
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape' && !saving) setRenameTarget(null);
-              }}
+              style={{ position: 'fixed', zIndex: 3600, inset: 0, display: 'grid', placeItems: 'center', padding: 16 }}
+              onKeyDown={(e) => { if (e.key === 'Escape' && !saving) setRenameTarget(null); }}
             >
               <div
                 className="card"
                 style={{
-                  width: '100%',
-                  maxWidth: 520,
-                  background: '#fff',
-                  borderRadius: 16,
-                  boxShadow:
-                    '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)',
-                  padding: 16,
-                  position: 'relative',
+                  width: '100%', maxWidth: 520, background: '#fff', borderRadius: 16,
+                  boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)',
+                  padding: 16, position: 'relative',
                 }}
               >
-                {/* close */}
                 <button
                   onClick={() => !saving && setRenameTarget(null)}
                   aria-label="Cerrar"
-                  style={{
-                    position: 'absolute',
-                    right: 12,
-                    top: 12,
-                    border: 'none',
-                    background: 'transparent',
-                    fontSize: 18,
-                    cursor: 'pointer',
-                  }}
+                  style={{ position: 'absolute', right: 12, top: 12, border: 'none', background: 'transparent', fontSize: 18, cursor: 'pointer' }}
                 >
                   ×
                 </button>
 
-                <h3 style={{ margin: '4px 0 12px', fontSize: 18, fontWeight: 700 }}>
-                  Cambiar nombre
-                </h3>
+                <h3 style={{ margin: '4px 0 12px', fontSize: 18, fontWeight: 700 }}>Cambiar nombre</h3>
 
                 <input
                   autoFocus
                   value={renameValue}
                   onChange={(e) => setRenameValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !saving) confirmRename();
-                  }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !saving) confirmRename(); }}
                   placeholder="Nombre del workspace"
                   className="input"
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: 8,
-                    border: '1px solid var(--border, #e5e7eb)',
-                    outline: 'none',
-                    fontSize: 14,
-                  }}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border, #e5e7eb)', outline: 'none', fontSize: 14 }}
                 />
 
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
-                  <button
-                    className="btn"
-                    onClick={() => !saving && setRenameTarget(null)}
-                    disabled={saving}
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    className="btn primary"
-                    onClick={confirmRename}
-                    disabled={saving || !renameValue.trim()}
-                  >
+                  <button className="btn" onClick={() => !saving && setRenameTarget(null)} disabled={saving}>Cancelar</button>
+                  <button className="btn primary" onClick={confirmRename} disabled={saving || !renameValue.trim()}>
                     {saving ? 'Guardando…' : 'Guardar'}
                   </button>
                 </div>
@@ -414,7 +323,6 @@ export default function WorkspaceSidebar({
   );
 }
 
-/** Item del menú */
 function MenuItem({
   children,
   danger,
@@ -438,12 +346,8 @@ function MenuItem({
         fontSize: 13,
         color: danger ? '#b91c1c' : '#111827',
       }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.background = '#f3f4f6';
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-      }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = '#f3f4f6'; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
     >
       {children}
     </button>
