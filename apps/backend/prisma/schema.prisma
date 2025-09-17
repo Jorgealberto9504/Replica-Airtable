@@ -1,270 +1,282 @@
 // === Cliente de Prisma (genera tipos y métodos tipados) ===
-generator client {                             // Inicio del bloque que configura el cliente de Prisma
-  provider = "prisma-client-js"                // Indicamos que use el cliente de JavaScript/TypeScript
-}                                              // Fin del bloque del generator
+generator client {
+  provider = "prisma-client-js"
+}
 
 // === Fuente de datos: Postgres (URL viene de .env) ===
-datasource db {                                // Inicio del bloque que define la conexión a la base de datos
-  provider = "postgresql"                      // Usaremos PostgreSQL como motor de base de datos
-  url      = env("DATABASE_URL")               // La URL de conexión se toma de la variable de entorno DATABASE_URL
-}                                              // Fin del bloque del datasource
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
 
 /* ============================================================
    ENUMS
    ============================================================ */
 
 // Roles globales (en toda la plataforma)
-enum PlatformRole {                            // Inicio del enum para el rol global del usuario
-  USER                                         // Rol normal de usuario
-  SYSADMIN                                     // Rol de superadministrador (tiene permisos globales)
-}                                              // Fin del enum PlatformRole
+enum PlatformRole {
+  USER
+  SYSADMIN
+}
 
 // Roles por Base (membership por base)
-enum BaseRole {                                // Inicio del enum para rol de un usuario dentro de una base
-  EDITOR      // puede crear/editar/eliminar registros   // Rol con permisos de edición total de registros
-  COMMENTER   // puede comentar                          // Rol que puede comentar (normalmente también leer)
-  VIEWER      // solo lectura                            // Rol que sólo puede ver
-}                                              // Fin del enum BaseRole
+enum BaseRole {
+  EDITOR      // puede crear/editar/eliminar registros
+  COMMENTER   // puede comentar
+  VIEWER      // solo lectura
+}
 
 // Visibilidad de la Base
-enum BaseVisibility {                          // Inicio del enum de visibilidad de una base
-  PUBLIC                                       // Base visible públicamente
-  PRIVATE                                      // Base visible sólo para dueños/miembros
-}                                              // Fin del enum BaseVisibility
+enum BaseVisibility {
+  PUBLIC
+  PRIVATE
+}
 
 // === Tipos disponibles para columnas ===
-enum FieldType {                              
-  TEXT         // Texto corto                   // Campo de texto breve (una línea)
-  LONG_TEXT    // Texto largo                   // Campo de texto largo (varias líneas)
-  NUMBER       // Número decimal                // Campo numérico decimal
-  CURRENCY     // Moneda (decimal; formato en Field.config) // Igual que NUMBER pero se formatea como moneda
-  CHECKBOX     // Booleano (true/false)         // Casilla de verificación (verdadero/falso)
-  DATE         // Solo fecha  // Fecha sin hora (guardada a medianoche)
-  DATETIME     // Fecha y hora      // Fecha con hora completa
-}                                            
+enum FieldType {
+  TEXT         // Texto corto
+  LONG_TEXT    // Texto largo
+  NUMBER       // Número decimal
+  CURRENCY     // Moneda (decimal; formato en Field.config)
+  CHECKBOX     // Booleano (true/false)
+  DATE         // Solo fecha
+  DATETIME     // Fecha y hora
+}
 
 /* ============================================================
    MODELOS PRINCIPALES EXISTENTES (+ relaciones necesarias)
    ============================================================ */
 
 // === Usuario (datos básicos + rol global + permisos globales) ===
-model User {                                   // Inicio del modelo de usuario
-  id                 Int           @id @default(autoincrement()) // Identificador único autoincremental
-  email              String        @unique                       // Email único para login
-  fullName           String                                        // Nombre completo del usuario
-  passwordHash       String                                        // Hash de la contraseña (no guardamos texto plano)
-  createdAt          DateTime      @default(now())                // Fecha de creación
+model User {
+  id                 Int           @id @default(autoincrement())
+  email              String        @unique
+  fullName           String
+  passwordHash       String
+  createdAt          DateTime      @default(now())
 
   // Estado y seguridad
-  isActive           Boolean       @default(true)                 // Si la cuenta está activa
-  mustChangePassword Boolean       @default(true)                 // Obliga a cambiar contraseña en el próximo login
-  passwordUpdatedAt  DateTime?                                    // Cuándo se actualizó la contraseña (opcional)
+  isActive           Boolean       @default(true)
+  mustChangePassword Boolean       @default(true)
+  passwordUpdatedAt  DateTime?
 
   // Rol global
-  platformRole       PlatformRole  @default(USER)                 // Rol global (USER o SYSADMIN)
+  platformRole       PlatformRole  @default(USER)
 
   // Permiso global para crear bases (además del SYSADMIN)
-  canCreateBases     Boolean       @default(false)                // Flag para permitir crear bases sin ser SYSADMIN
+  canCreateBases     Boolean       @default(false)
 
   // Relaciones existentes
-  ownedBases         Base[]        @relation("BaseOwner")         // Bases que este usuario posee (dueño)
-  baseMembers        BaseMember[]                                // Membresías del usuario en distintas bases
+  ownedBases         Base[]        @relation("BaseOwner")
+  baseMembers        BaseMember[]
 
   // Workspaces (existente)
-  ownedWorkspaces    Workspace[]   @relation("WorkspaceOwner")    // Workspaces que este usuario posee
+  ownedWorkspaces    Workspace[]   @relation("WorkspaceOwner")
 
-  // Backrefs de auditoría (mantener por compatibilidad)
-  fieldsCreated      Field[]       @relation("FieldCreatedBy")    // Campos creados por el usuario (sólo referencia)
-  fieldsUpdated      Field[]       @relation("FieldUpdatedBy")    // Campos actualizados por el usuario
-  recordsCreated     RecordRow[]   @relation("RecordRowCreatedBy")// Registros creados por el usuario
-  recordsUpdated     RecordRow[]   @relation("RecordRowUpdatedBy")// Registros actualizados por el usuario
-}                                              // Fin del modelo User
+  // Backrefs de auditoría
+  fieldsCreated      Field[]       @relation("FieldCreatedBy")
+  fieldsUpdated      Field[]       @relation("FieldUpdatedBy")
+  recordsCreated     RecordRow[]   @relation("RecordRowCreatedBy")
+  recordsUpdated     RecordRow[]   @relation("RecordRowUpdatedBy")
+
+  // 👇 NUEVOS backrefs para auditoría de celdas
+  recordCellsCreated RecordCell[]  @relation("RecordCellCreatedBy")
+  recordCellsUpdated RecordCell[]  @relation("RecordCellUpdatedBy")
+}
 
 // === Workspace (agrupa Bases) ===
-model Workspace {                               // Inicio del modelo de workspace
-  id         Int       @id @default(autoincrement()) // Identificador único autoincremental
-  name       String                                    // Nombre del workspace
-  createdAt  DateTime  @default(now())                 // Fecha de creación
-  updatedAt  DateTime  @updatedAt                     // Fecha de última actualización (automática)
+model Workspace {
+  id         Int       @id @default(autoincrement())
+  name       String
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   // Propietario / dueño del workspace
-  ownerId    Int                                       // FK al usuario dueño
-  owner      User      @relation("WorkspaceOwner", fields: [ownerId], references: [id]) // Relación al dueño
+  ownerId    Int
+  owner      User      @relation("WorkspaceOwner", fields: [ownerId], references: [id])
 
   // Papelera (soft delete)
-  isTrashed  Boolean   @default(false)                 // Marcador de papelera (soft delete)
-  trashedAt  DateTime?                                 // Fecha en que se envió a papelera (opcional)
+  isTrashed  Boolean   @default(false)
+  trashedAt  DateTime?
 
   // Bases dentro del workspace
-  bases      Base[]                                    // Lista de bases que pertenecen a este workspace
+  bases      Base[]
 
   // Índices y unicidad
-  @@index([ownerId])                                   // Índice para consultas por dueño
-  @@index([isTrashed])                                 // Índice para filtrar por papelera
-  @@index([trashedAt])                                 // Índice para ordenar por fecha de papelera
-  @@unique([ownerId, name, isTrashed])                 // Nombre único por dueño mientras el workspace esté activo
-}                                                      // Fin del modelo Workspace
+  @@index([ownerId])
+  @@index([isTrashed])
+  @@index([trashedAt])
+  @@unique([ownerId, name, isTrashed])
+}
 
 // === Base (espacio tipo Airtable) ===
-model Base {                                           // Inicio del modelo de base
-  id          Int             @id @default(autoincrement()) // Identificador único autoincremental
-  name        String                                        // Nombre de la base
-  createdAt   DateTime        @default(now())               // Fecha de creación
-  updatedAt   DateTime        @updatedAt                    // Fecha de última actualización (automática)
+model Base {
+  id          Int             @id @default(autoincrement())
+  name        String
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
 
-  // Pertenencia a workspace (opcional en Fase 1)
-  workspaceId Int?                                          // FK opcional al workspace
-  workspace   Workspace?      @relation(fields: [workspaceId], references: [id], onDelete: Cascade) // Relación al workspace (eliminar en cascada)
+  // Pertenencia a workspace (opcional)
+  workspaceId Int?
+  workspace   Workspace?      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   // Propietario / dueño de la base
-  ownerId     Int                                            // FK al usuario dueño de la base
-  owner       User            @relation("BaseOwner", fields: [ownerId], references: [id]) // Relación al dueño
+  ownerId     Int
+  owner       User            @relation("BaseOwner", fields: [ownerId], references: [id])
 
   // Pública / Privada
-  visibility  BaseVisibility  @default(PRIVATE)              // Visibilidad de la base (por defecto privada)
+  visibility  BaseVisibility  @default(PRIVATE)
 
   // Papelera
-  isTrashed   Boolean         @default(false)                // Marcador de papelera para la base
-  trashedAt   DateTime?                                      // Fecha en que se envió a papelera (opcional)
+  isTrashed   Boolean         @default(false)
+  trashedAt   DateTime?
 
   // Miembros con rol por base
-  members     BaseMember[]                                   // Membresías de usuarios en esta base
+  members     BaseMember[]
 
   // Tablas dentro de la base
-  tables      TableDef[]                                     // Tablas (hojas) que viven dentro de esta base
+  tables      TableDef[]
 
   // Índices y unicidad
-  @@index([ownerId])                                         // Índice para consultas por dueño
-  @@index([visibility])                                      // Índice para filtrar por visibilidad
-  @@index([workspaceId])                                     // Índice para filtrar por workspace
-  @@index([trashedAt])                                       // Índice para ordenar por fecha de papelera
-  @@index([isTrashed])                                       // Índice para filtrar por papelera
-  @@unique([ownerId, name, isTrashed])                       // Nombre único por dueño mientras la base esté activa
-}                                                            // Fin del modelo Base
+  @@index([ownerId])
+  @@index([visibility])
+  @@index([workspaceId])
+  @@index([trashedAt])
+  @@index([isTrashed])
+  @@unique([ownerId, name, isTrashed])
+}
 
 // === Membership (user + base + rol por base) ===
-model BaseMember {                                           // Inicio del modelo de membresía por base
-  id        Int       @id @default(autoincrement())          // Identificador único autoincremental
-  baseId    Int                                               // FK a la base
-  userId    Int                                               // FK al usuario
-  role      BaseRole  @default(VIEWER)                       // Rol del usuario dentro de esta base (por defecto VIEWER)
-  createdAt DateTime  @default(now())                        // Fecha de creación de la membresía
+model BaseMember {
+  id        Int       @id @default(autoincrement())
+  baseId    Int
+  userId    Int
+  role      BaseRole  @default(VIEWER)
+  createdAt DateTime  @default(now())
 
-  base      Base      @relation(fields: [baseId], references: [id], onDelete: Cascade) // Relación a la base (elimina en cascada)
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade) // Relación al usuario (elimina en cascada)
+  base      Base      @relation(fields: [baseId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Un usuario no puede tener dos memberships en la misma base
-  @@unique([baseId, userId])                                 // Restringe a una membresía por usuario y base
-}                                                            // Fin del modelo BaseMember
+  @@unique([baseId, userId])
+}
 
 // === Tabla dentro de una Base ===
-model TableDef {                                             // Inicio del modelo de tabla (como hoja de cálculo)
-  id        Int       @id @default(autoincrement())          // Identificador único autoincremental
-  baseId    Int                                               // FK a la base a la que pertenece
-  name      String                                           // Nombre de la tabla
-  createdAt DateTime  @default(now())                        // Fecha de creación
-  updatedAt DateTime  @updatedAt                             // Fecha de última actualización (automática)
+model TableDef {
+  id        Int       @id @default(autoincrement())
+  baseId    Int
+  name      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   // Orden para tabs
-  position  Int       @default(0)                            // Posición para ordenar las pestañas/tablas
+  position  Int       @default(0)
 
   // Papelera
-  isTrashed Boolean   @default(false)                        // Marcador de papelera para la tabla
-  trashedAt DateTime?                                        // Fecha en que se envió a papelera (opcional)
+  isTrashed Boolean   @default(false)
+  trashedAt DateTime?
 
-  base      Base      @relation(fields: [baseId], references: [id], onDelete: Cascade) // Relación a la base (elimina en cascada)
+  base      Base      @relation(fields: [baseId], references: [id], onDelete: Cascade)
 
   // Relación con columnas y filas
-  fields    Field[]        // columnas definidas en esta tabla          // Lista de columnas de la tabla
-  records   RecordRow[]    // filas de datos de esta tabla              // Lista de filas (registros) de la tabla
+  fields    Field[]
+  records   RecordRow[]
 
-  @@unique([baseId, name, isTrashed])                        // Nombre único dentro de la base mientras la tabla esté activa
-  @@index([baseId])                                          // Índice para filtrar por base
-  @@index([trashedAt])                                       // Índice para ordenar por fecha de papelera
-  @@index([isTrashed])                                       // Índice para filtrar por papelera
-  @@index([baseId, position])                                // Índice para ordenar tabs por posición dentro de la base
-}                                                            // Fin del modelo TableDef
+  @@unique([baseId, name, isTrashed])
+  @@index([baseId])
+  @@index([trashedAt])
+  @@index([isTrashed])
+  @@index([baseId, position])
+}
 
 /* ============================================================
    NUEVOS MODELOS PARA COLUMNAS Y REGISTROS (8.1 minimal)
    ============================================================ */
 
 // === Definición de columna ===
-model Field {                                                
-  id        Int       @id @default(autoincrement())          // Identificador único autoincremental del campo
-  tableId   Int                                               // FK a la tabla dueña de esta columna
-  name      String                                            // Nombre visible de la columna
-  type      FieldType                                         // Tipo de dato de la columna (usa el enum FieldType)
-  config    Json?                                             // Config extra por tipo (p. ej. formato moneda, opciones, min/max etc.)
-  position  Int       @default(0)                             // Orden de la columna en el grid
+model Field {
+  id        Int       @id @default(autoincrement())
+  tableId   Int
+  name      String
+  type      FieldType
+  config    Json?
+  position  Int       @default(0)
 
-  createdAt DateTime  @default(now())                         // Fecha de creación del campo
-  updatedAt DateTime  @updatedAt                              // Fecha de última actualización (automática)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   // Auditoría
-  createdById Int?                                            // FK al usuario que creó el campo (opcional)
-  createdBy   User? @relation("FieldCreatedBy", fields: [createdById], references: [id], onDelete: SetNull) // Relación al creador (si se borra, queda NULL)
-  updatedById Int?                                            // FK al usuario que actualizó el campo por última vez (opcional)
-  updatedBy   User? @relation("FieldUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull) // Relación al actualizador (si se borra, queda NULL)
+  createdById Int?
+  createdBy   User? @relation("FieldCreatedBy",  fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById Int?
+  updatedBy   User? @relation("FieldUpdatedBy",  fields: [updatedById], references: [id], onDelete: SetNull)
 
-  // Papelera rápida para columnas (si decides usar soft-delete de columnas)
-  isTrashed  Boolean   @default(false)                        // Marcador de papelera para la columna
-  trashedAt  DateTime?                                        // Fecha en que se envió a papelera (opcional)
+  // Papelera rápida para columnas
+  isTrashed  Boolean   @default(false)
+  trashedAt  DateTime?
 
-  table      TableDef   @relation(fields: [tableId], references: [id], onDelete: Cascade) // Relación a la tabla (elimina en cascada)
-  cells      RecordCell[]                                    // Celdas que pertenecen a esta columna (una por fila)
+  table      TableDef   @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  cells      RecordCell[]
 
-  @@unique([tableId, name, isTrashed])                       // Permite repetir nombre sólo si la anterior está en papelera
-  @@index([tableId, position])                               // Índice para listar/ordenar columnas por posición
-  @@index([isTrashed])                                       // Índice para filtrar columnas en papelera
-  @@index([trashedAt])                                       // Índice para ordenar columnas por fecha de papelera
-}                                                            // Fin del modelo Field
+  @@unique([tableId, name, isTrashed])
+  @@index([tableId, position])
+  @@index([isTrashed])
+  @@index([trashedAt])
+}
 
 // === Fila/Registro de datos ===
-model RecordRow {                                         
-  id        Int       @id @default(autoincrement())          // Identificador único autoincremental del registro
-  tableId   Int                                               // FK a la tabla a la que pertenece la fila
+model RecordRow {
+  id        Int       @id @default(autoincrement())
+  tableId   Int
 
-  createdAt DateTime  @default(now())                        // Fecha de creación del registro
-  updatedAt DateTime  @updatedAt                             // Fecha de última actualización (automática)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
-  // Auditoría de usuario (útil si harás historial/undo)
-  createdById Int?                                            // FK al usuario creador (opcional)
-  createdBy   User? @relation("RecordRowCreatedBy", fields: [createdById], references: [id], onDelete: SetNull) // Relación al creador (si se borra, queda NULL)
-  updatedById Int?                                            // FK al usuario que actualizó por última vez (opcional)
-  updatedBy   User? @relation("RecordRowUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull) // Relación al actualizador (si se borra, queda NULL)
+  // Auditoría de usuario
+  createdById Int?
+  createdBy   User? @relation("RecordRowCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById Int?
+  updatedBy   User? @relation("RecordRowUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
-  // Papelera rápida para filas
-  isTrashed  Boolean   @default(false)                        // Marcador de papelera para la fila
-  trashedAt  DateTime?                                        // Fecha en que se envió a papelera (opcional)
+  // Papelera
+  isTrashed  Boolean   @default(false)
+  trashedAt  DateTime?
 
-  table      TableDef  @relation(fields: [tableId], references: [id], onDelete: Cascade) // Relación a la tabla (elimina en cascada)
-  cells      RecordCell[]                                    // Conjunto de celdas (una por columna)
+  table      TableDef  @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  cells      RecordCell[]
 
-  @@index([tableId])                                         // Índice para filtrar/consultar por tabla
-  @@index([updatedAt])                                       // Índice para ordenar por última actualización
-  @@index([isTrashed])                                       // Índice para filtrar filas en papelera
-  @@index([trashedAt])                                       // Índice para ordenar filas por fecha de papelera
-}                                                            // Fin del modelo RecordRow
+  @@index([tableId])
+  @@index([updatedAt])
+  @@index([isTrashed])
+  @@index([trashedAt])
+}
 
 // === Celda: valor para el par (recordId, fieldId) ===
-model RecordCell {                                          
-  id       Int   @id @default(autoincrement())               // Identificador único autoincremental de la celda
-  recordId Int                                               // id de la fila dueña de esta celda
-  fieldId  Int                                               // id de la columna dueña de esta celda
+model RecordCell {
+  id       Int   @id @default(autoincrement())
+  recordId Int
+  fieldId  Int
 
-  record   RecordRow  @relation(fields: [recordId], references: [id], onDelete: Cascade) // Relación a la fila (elimina en cascada)
-  field    Field      @relation(fields: [fieldId],  references: [id], onDelete: Cascade) // Relación a la columna (elimina en cascada)
+  record   RecordRow @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  field    Field     @relation(fields: [fieldId],  references: [id], onDelete: Cascade)
+
+  // Auditoría y tiempos
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById Int?
+  createdBy   User?    @relation("RecordCellCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById Int?
+  updatedBy   User?    @relation("RecordCellUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   // Se usa SOLO UNA columna según Field.type
-  stringValue   String?    // TEXT / LONG_TEXT                   // Valor cuando la columna es de texto
-  numberValue   Decimal?   // NUMBER / CURRENCY                  // Valor cuando la columna es numérica o moneda
-  boolValue     Boolean?   // CHECKBOX                           // Valor cuando la columna es booleana
-  dateValue     DateTime?  // DATE (00:00)                       // Valor cuando la columna es fecha sin hora
-  datetimeValue DateTime?  // DATETIME                           // Valor cuando la columna es fecha con hora
+  stringValue   String?
+  numberValue   Decimal?
+  boolValue     Boolean?
+  dateValue     DateTime?
+  datetimeValue DateTime?
 
-  @@unique([recordId, fieldId])                                // Evita duplicar la misma celda (una por fila/columna)
-  @@index([fieldId])                                           // Índice para filtrar por columna
-  @@index([numberValue])                                       // Índice para ordenar/filtrar por número
-  @@index([datetimeValue])                                     // Índice para ordenar por fecha/hora
-}                                                             // Fin del modelo RecordCell
+  @@unique([recordId, fieldId])
+  @@index([fieldId])
+  @@index([numberValue])
+  @@index([datetimeValue])
+}
