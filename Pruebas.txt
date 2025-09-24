@@ -328,3 +328,48 @@ http://localhost:8080/bases/25/tables/36/records/51
 
 POST
 http://localhost:8080/bases/25/tables/36/fields/116/restore
+
+
+
+
+
+
+
+
+
+Tarea10.2
+
+
+1. Listar comentarios de la fila. GET
+http://localhost:8080/bases/1/tables/1/records/3/comments
+http://localhost:8080/bases/1/tables/1/records/3/comments?page=1&pageSize=50
+
+
+
+2. Crear comentario. POST
+http://localhost:8080/bases/1/tables/1/records/3/comments
+
+{ "body": "Primer comentario sobre la fila 3" }
+
+
+3. Editar comentario (autor o SYSADMIN). PATCH
+http://localhost:8080/bases/1/tables/1/records/3/comments/{commentId}
+
+{ "body": "Comentario editado" }
+
+
+4. Enviar comentario a papelera (soft delete). DELETE
+http://localhost:8080/bases/1/tables/1/records/3/comments/{commentId}
+
+
+5. Listar comentarios en papelera. GET
+http://localhost:8080/bases/1/tables/1/records/3/comments/trash
+
+
+6. Restaurar un comentario desde la papelera 
+http://localhost:8080/bases/1/tables/1/records/3/comments/1/restore
+
+
+7. hacer login con usuario viewer y tratar de comentar
+
+8. hacer login con usuario commenter y crear comentario

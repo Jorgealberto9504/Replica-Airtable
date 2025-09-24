@@ -5,8 +5,9 @@ generator client {
 
 // === Fuente de datos: Postgres (URL viene de .env) ===
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL") // usa la conexión directa en migraciones
 }
 
 /**
@@ -75,6 +76,10 @@ model User {
 
   recordCellsCreated RecordCell[] @relation("RecordCellCreatedBy")
   recordCellsUpdated RecordCell[] @relation("RecordCellUpdatedBy")
+
+  // --- BACKREFS DE COMENTARIOS ---
+  commentsCreated Comment[] @relation("CommentAuthor") // NEW: comentarios escritos por este usuario (para auditoría/permisos)
+  commentsUpdated Comment[] @relation("CommentEditor") // NEW: comentarios editados por este usuario (histórico de edición)
 }
 
 model Workspace {
@@ -240,6 +245,8 @@ model RecordRow {
   table TableDef     @relation(fields: [tableId], references: [id], onDelete: Cascade)
   cells RecordCell[]
 
+  comments Comment[] // NEW: backref para listar todos los comentarios asociados a esta fila
+
   @@index([tableId])
   @@index([updatedAt])
   @@index([isTrashed])
@@ -294,4 +301,32 @@ model RecordCellOption {
 
   @@id([recordCellId, optionId])
   @@index([optionId])
+}
+
+/**
+ * ============================================================
+ * COMENTARIOS (por fila, sin hilos)
+ * ============================================================
+ */
+model Comment {
+  id          Int       @id @default(autoincrement())                                                // NEW: id autoincremental del comentario
+  recordId    Int                                                                                   // NEW: FK a la fila comentada
+  record      RecordRow  @relation(fields: [recordId], references: [id], onDelete: Cascade)         // NEW: comentario pertenece a una fila; si la fila se borra, se borran sus comentarios
+
+  body        String                                                                                // NEW: contenido de texto del comentario
+
+  createdAt   DateTime   @default(now())                                                            // NEW: fecha/hora de creación
+  updatedAt   DateTime   @updatedAt                                                                 // NEW: fecha/hora de última edición
+
+  createdById Int?                                                                                  // NEW: FK al autor (nullable para no romper si el usuario se elimina)
+  createdBy   User?      @relation("CommentAuthor", fields: [createdById], references: [id], onDelete: SetNull) // NEW: autor del comentario
+  updatedById Int?                                                                                  // NEW: FK al último editor (opcional)
+  updatedBy   User?      @relation("CommentEditor", fields: [updatedById], references: [id], onDelete: SetNull) // NEW: último editor del comentario
+
+  isTrashed   Boolean    @default(false)                                                            // NEW: soft delete (no se borra físico de inmediato)
+  trashedAt   DateTime?                                                                             // NEW: cuándo se mandó a papelera
+
+  @@index([recordId, createdAt])                                                                    // NEW: consultas por fila/orden cronológico
+  @@index([isTrashed])                                                                              // NEW: filtrar activos vs papelera
+  @@index([trashedAt])                                                                              // NEW: soporte para purgas por antigüedad
 }
