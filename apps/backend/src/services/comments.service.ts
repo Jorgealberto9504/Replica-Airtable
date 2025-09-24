@@ -1,0 +1,215 @@
+import { prisma } from './db.js';
+import { badRequest, forbidden, notFound } from '../utils/errors.js';
+import { BaseRole, PlatformRole } from '@prisma/client';
+
+/* ========= Helpers de autorización ========= */
+
+async function getBaseContextByTable(tableId: number) {
+  const t = await prisma.tableDef.findUnique({
+    where: { id: tableId },
+    select: { id: true, baseId: true, base: { select: { ownerId: true } } },
+  });
+  if (!t) throw notFound('La tabla no existe.');
+  return { baseId: t.baseId, ownerId: t.base.ownerId };
+}
+
+async function canComment(tableId: number, userId: number | null) {
+  if (!userId) return false;
+  const { baseId, ownerId } = await getBaseContextByTable(tableId);
+
+  const [user, member] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId }, select: { platformRole: true, id: true } }),
+    prisma.baseMember.findUnique({
+      where: { baseId_userId: { baseId, userId } },
+      select: { role: true },
+    }),
+  ]);
+
+  if (user?.platformRole === PlatformRole.SYSADMIN) return true;
+  if (ownerId === userId) return true;
+  return member?.role === BaseRole.EDITOR || member?.role === BaseRole.COMMENTER;
+}
+
+async function canEditOrDeleteComment(commentId: number, userId: number | null) {
+  if (!userId) return false;
+  const c = await prisma.comment.findUnique({
+    where: { id: commentId },
+    select: { createdById: true, record: { select: { tableId: true } } },
+  });
+  if (!c) return false;
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { platformRole: true, id: true },
+  });
+  if (user?.platformRole === PlatformRole.SYSADMIN) return true;
+  return c.createdById === userId;
+}
+
+/* ========= Servicios ========= */
+
+export async function listCommentsSvc(
+  _baseId: number,
+  tableId: number,
+  recordId: number,
+  page = 1,
+  pageSize = 50,
+) {
+  // Valida que el record pertenezca a esa tabla y esté activo
+  const rec = await prisma.recordRow.findFirst({
+    where: { id: recordId, tableId, isTrashed: false },
+    select: { id: true },
+  });
+  if (!rec) throw notFound('La fila no existe en esta tabla.');
+
+  const [items, total] = await Promise.all([
+    prisma.comment.findMany({
+      where: { recordId, isTrashed: false },
+      orderBy: { createdAt: 'asc' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      select: {
+        id: true,
+        body: true,
+        createdAt: true,
+        updatedAt: true,
+        createdBy: { select: { id: true, fullName: true } },
+        updatedBy: { select: { id: true, fullName: true } },
+      },
+    }),
+    prisma.comment.count({ where: { recordId, isTrashed: false } }),
+  ]);
+
+  return { total, comments: items };
+}
+
+export async function createCommentSvc(
+  _baseId: number,
+  tableId: number,
+  recordId: number,
+  body: string,
+  userId: number | null,
+) {
+  if (!body || !body.trim()) throw badRequest('El comentario no puede estar vacío.');
+  if (!(await canComment(tableId, userId))) {
+    throw forbidden('No tienes permisos para comentar en esta tabla.');
+  }
+
+  // Verifica que la fila exista en la tabla
+  const rec = await prisma.recordRow.findFirst({
+    where: { id: recordId, tableId, isTrashed: false },
+    select: { id: true },
+  });
+  if (!rec) throw notFound('La fila no existe en esta tabla.');
+
+  const c = await prisma.comment.create({
+    data: {
+      recordId,
+      body: body.trim(),
+      createdById: userId ?? undefined,
+      updatedById: userId ?? undefined,
+    },
+    select: {
+      id: true,
+      body: true,
+      createdAt: true,
+      updatedAt: true,
+      createdBy: { select: { id: true, fullName: true } },
+      updatedBy: { select: { id: true, fullName: true } },
+    },
+  });
+
+  return c;
+}
+
+export async function updateCommentSvc(
+  _baseId: number,
+  tableId: number,
+  recordId: number,
+  commentId: number,
+  body: string,
+  userId: number | null,
+) {
+  if (!body || !body.trim()) throw badRequest('El comentario no puede estar vacío.');
+
+  // Confirma pertenencia a la fila/tabla
+  const c = await prisma.comment.findUnique({
+    where: { id: commentId },
+    select: { id: true, recordId: true, record: { select: { tableId: true } } },
+  });
+  if (!c || c.recordId !== recordId || c.record.tableId !== tableId) {
+    throw notFound('Comentario no encontrado en esta fila.');
+  }
+
+  if (!(await canEditOrDeleteComment(commentId, userId))) {
+    throw forbidden('Solo el autor o un SYSADMIN pueden editar este comentario.');
+  }
+
+  await prisma.comment.update({
+    where: { id: commentId },
+    data: { body: body.trim(), updatedById: userId ?? undefined },
+  });
+  return { ok: true };
+}
+
+export async function softDeleteCommentSvc(
+  _baseId: number,
+  tableId: number,
+  recordId: number,
+  commentId: number,
+  userId: number | null,
+) {
+  const c = await prisma.comment.findUnique({
+    where: { id: commentId },
+    select: { id: true, recordId: true, record: { select: { tableId: true } } },
+  });
+  if (!c || c.recordId !== recordId || c.record.tableId !== tableId) {
+    throw notFound('Comentario no encontrado en esta fila.');
+  }
+
+  if (!(await canEditOrDeleteComment(commentId, userId))) {
+    throw forbidden('Solo el autor o un SYSADMIN pueden eliminar este comentario.');
+  }
+
+  await prisma.comment.update({
+    where: { id: commentId },
+    data: { isTrashed: true, trashedAt: new Date() },
+  });
+  return { ok: true };
+}
+
+/* ========= Papelera ========= */
+export async function listTrashedCommentsSvc(recordId: number) {
+  return prisma.comment.findMany({
+    where: { recordId, isTrashed: true },
+    orderBy: { trashedAt: 'desc' },
+  });
+}
+export async function restoreCommentSvc(recordId: number, commentId: number) {
+  const c = await prisma.comment.findUnique({ where: { id: commentId } });
+  if (!c || c.recordId !== recordId) throw notFound('Comentario no encontrado.');
+  if (!c.isTrashed) throw badRequest('El comentario no está en papelera.');
+  await prisma.comment.update({
+    where: { id: commentId },
+    data: { isTrashed: false, trashedAt: null },
+  });
+  return { ok: true };
+}
+export async function deleteCommentPermanentSvc(recordId: number, commentId: number) {
+  const c = await prisma.comment.findUnique({ where: { id: commentId } });
+  if (!c || c.recordId !== recordId) throw notFound('Comentario no encontrado.');
+  if (!c.isTrashed) throw badRequest('El comentario no está en papelera.');
+  await prisma.comment.delete({ where: { id: commentId } });
+  return { ok: true };
+}
+export async function emptyCommentTrashForRecordSvc(recordId: number) {
+  await prisma.comment.deleteMany({ where: { recordId, isTrashed: true } });
+  return { ok: true };
+}
+export async function purgeTrashedCommentsForRecordOlderThanSvc(recordId: number, days = 30) {
+  const threshold = new Date(Date.now() - days * 86_400_000);
+  await prisma.comment.deleteMany({
+    where: { recordId, isTrashed: true, trashedAt: { lte: threshold } },
+  });
+  return { ok: true };
+}

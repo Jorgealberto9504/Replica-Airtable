@@ -5,182 +5,158 @@ generator client {
 
 // === Fuente de datos: Postgres (URL viene de .env) ===
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL") // usa la conexión directa en migraciones
 }
 
-/* ============================================================
-   ENUMS
-   ============================================================ */
+/**
+ * ============================================================
+ * ENUMS
+ * ============================================================
+ */
 
-// Roles globales (en toda la plataforma)
 enum PlatformRole {
   USER
   SYSADMIN
 }
 
-// Roles por Base (membership por base)
 enum BaseRole {
-  EDITOR      // puede crear/editar/eliminar registros
-  COMMENTER   // puede comentar
-  VIEWER      // solo lectura
+  EDITOR
+  COMMENTER
+  VIEWER
 }
 
-// Visibilidad de la Base
 enum BaseVisibility {
   PUBLIC
   PRIVATE
 }
 
-// === Tipos disponibles para columnas ===
 enum FieldType {
-  TEXT         // Texto corto
-  LONG_TEXT    // Texto largo
-  NUMBER       // Número decimal
-  CURRENCY     // Moneda (decimal; formato en Field.config)
-  CHECKBOX     // Booleano (true/false)
-  DATE         // Solo fecha
-  DATETIME     // Fecha y hora
+  TEXT
+  LONG_TEXT
+  NUMBER
+  CURRENCY
+  CHECKBOX
+  DATE
+  DATETIME
+  TIME // minutos desde medianoche
+  SINGLE_SELECT
+  MULTI_SELECT
 }
 
-/* ============================================================
-   MODELOS PRINCIPALES EXISTENTES (+ relaciones necesarias)
-   ============================================================ */
+/**
+ * ============================================================
+ * MODELOS PRINCIPALES
+ * ============================================================
+ */
 
-// === Usuario (datos básicos + rol global + permisos globales) ===
 model User {
-  id                 Int           @id @default(autoincrement())
-  email              String        @unique
-  fullName           String
-  passwordHash       String
-  createdAt          DateTime      @default(now())
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  fullName     String
+  passwordHash String
+  createdAt    DateTime @default(now())
 
-  // Estado y seguridad
-  isActive           Boolean       @default(true)
-  mustChangePassword Boolean       @default(true)
+  isActive           Boolean   @default(true)
+  mustChangePassword Boolean   @default(true)
   passwordUpdatedAt  DateTime?
 
-  // Rol global
-  platformRole       PlatformRole  @default(USER)
+  platformRole   PlatformRole @default(USER)
+  canCreateBases Boolean      @default(false)
 
-  // Permiso global para crear bases (además del SYSADMIN)
-  canCreateBases     Boolean       @default(false)
+  ownedBases      Base[]       @relation("BaseOwner")
+  baseMembers     BaseMember[]
+  ownedWorkspaces Workspace[]  @relation("WorkspaceOwner")
 
-  // Relaciones existentes
-  ownedBases         Base[]        @relation("BaseOwner")
-  baseMembers        BaseMember[]
+  fieldsCreated  Field[]     @relation("FieldCreatedBy")
+  fieldsUpdated  Field[]     @relation("FieldUpdatedBy")
+  recordsCreated RecordRow[] @relation("RecordRowCreatedBy")
+  recordsUpdated RecordRow[] @relation("RecordRowUpdatedBy")
 
-  // Workspaces (existente)
-  ownedWorkspaces    Workspace[]   @relation("WorkspaceOwner")
+  recordCellsCreated RecordCell[] @relation("RecordCellCreatedBy")
+  recordCellsUpdated RecordCell[] @relation("RecordCellUpdatedBy")
 
-  // Backrefs de auditoría
-  fieldsCreated      Field[]       @relation("FieldCreatedBy")
-  fieldsUpdated      Field[]       @relation("FieldUpdatedBy")
-  recordsCreated     RecordRow[]   @relation("RecordRowCreatedBy")
-  recordsUpdated     RecordRow[]   @relation("RecordRowUpdatedBy")
-
-  // 👇 NUEVOS backrefs para auditoría de celdas
-  recordCellsCreated RecordCell[]  @relation("RecordCellCreatedBy")
-  recordCellsUpdated RecordCell[]  @relation("RecordCellUpdatedBy")
+  // --- BACKREFS DE COMENTARIOS ---
+  commentsCreated Comment[] @relation("CommentAuthor") // NEW: comentarios escritos por este usuario (para auditoría/permisos)
+  commentsUpdated Comment[] @relation("CommentEditor") // NEW: comentarios editados por este usuario (histórico de edición)
 }
 
-// === Workspace (agrupa Bases) ===
 model Workspace {
-  id         Int       @id @default(autoincrement())
-  name       String
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id        Int      @id @default(autoincrement())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  // Propietario / dueño del workspace
-  ownerId    Int
-  owner      User      @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+  ownerId Int
+  owner   User @relation("WorkspaceOwner", fields: [ownerId], references: [id])
 
-  // Papelera (soft delete)
-  isTrashed  Boolean   @default(false)
-  trashedAt  DateTime?
+  isTrashed Boolean   @default(false)
+  trashedAt DateTime?
 
-  // Bases dentro del workspace
-  bases      Base[]
+  bases Base[]
 
-  // Índices y unicidad
+  @@unique([ownerId, name, isTrashed])
   @@index([ownerId])
   @@index([isTrashed])
   @@index([trashedAt])
-  @@unique([ownerId, name, isTrashed])
 }
 
-// === Base (espacio tipo Airtable) ===
 model Base {
-  id          Int             @id @default(autoincrement())
-  name        String
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id        Int      @id @default(autoincrement())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  // Pertenencia a workspace (opcional)
   workspaceId Int?
-  workspace   Workspace?      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  // Propietario / dueño de la base
-  ownerId     Int
-  owner       User            @relation("BaseOwner", fields: [ownerId], references: [id])
+  ownerId Int
+  owner   User @relation("BaseOwner", fields: [ownerId], references: [id])
 
-  // Pública / Privada
-  visibility  BaseVisibility  @default(PRIVATE)
+  visibility BaseVisibility @default(PRIVATE)
 
-  // Papelera
-  isTrashed   Boolean         @default(false)
-  trashedAt   DateTime?
+  isTrashed Boolean   @default(false)
+  trashedAt DateTime?
 
-  // Miembros con rol por base
-  members     BaseMember[]
+  members BaseMember[]
+  tables  TableDef[]
 
-  // Tablas dentro de la base
-  tables      TableDef[]
-
-  // Índices y unicidad
+  @@unique([ownerId, name, isTrashed])
   @@index([ownerId])
   @@index([visibility])
   @@index([workspaceId])
   @@index([trashedAt])
   @@index([isTrashed])
-  @@unique([ownerId, name, isTrashed])
 }
 
-// === Membership (user + base + rol por base) ===
 model BaseMember {
-  id        Int       @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   baseId    Int
   userId    Int
-  role      BaseRole  @default(VIEWER)
-  createdAt DateTime  @default(now())
+  role      BaseRole @default(VIEWER)
+  createdAt DateTime @default(now())
 
-  base      Base      @relation(fields: [baseId], references: [id], onDelete: Cascade)
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  base Base @relation(fields: [baseId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Un usuario no puede tener dos memberships en la misma base
   @@unique([baseId, userId])
 }
 
-// === Tabla dentro de una Base ===
 model TableDef {
-  id        Int       @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   baseId    Int
   name      String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  position  Int      @default(0)
 
-  // Orden para tabs
-  position  Int       @default(0)
-
-  // Papelera
   isTrashed Boolean   @default(false)
   trashedAt DateTime?
 
-  base      Base      @relation(fields: [baseId], references: [id], onDelete: Cascade)
-
-  // Relación con columnas y filas
-  fields    Field[]
-  records   RecordRow[]
+  base    Base        @relation(fields: [baseId], references: [id], onDelete: Cascade)
+  fields  Field[]
+  records RecordRow[]
 
   @@unique([baseId, name, isTrashed])
   @@index([baseId])
@@ -189,34 +165,34 @@ model TableDef {
   @@index([baseId, position])
 }
 
-/* ============================================================
-   NUEVOS MODELOS PARA COLUMNAS Y REGISTROS (8.1 minimal)
-   ============================================================ */
+/**
+ * ============================================================
+ * COLUMNAS / REGISTROS
+ * ============================================================
+ */
 
-// === Definición de columna ===
 model Field {
-  id        Int       @id @default(autoincrement())
-  tableId   Int
-  name      String
-  type      FieldType
-  config    Json?
-  position  Int       @default(0)
+  id       Int       @id @default(autoincrement())
+  tableId  Int
+  name     String
+  type     FieldType
+  config   Json?
+  position Int       @default(0)
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  // Auditoría
   createdById Int?
-  createdBy   User? @relation("FieldCreatedBy",  fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User? @relation("FieldCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedById Int?
-  updatedBy   User? @relation("FieldUpdatedBy",  fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy   User? @relation("FieldUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
-  // Papelera rápida para columnas
-  isTrashed  Boolean   @default(false)
-  trashedAt  DateTime?
+  isTrashed Boolean   @default(false)
+  trashedAt DateTime?
 
-  table      TableDef   @relation(fields: [tableId], references: [id], onDelete: Cascade)
-  cells      RecordCell[]
+  table   TableDef       @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  cells   RecordCell[]
+  options SelectOption[] // para SINGLE/MULTI
 
   @@unique([tableId, name, isTrashed])
   @@index([tableId, position])
@@ -224,26 +200,52 @@ model Field {
   @@index([trashedAt])
 }
 
-// === Fila/Registro de datos ===
+/**
+ * Opciones para SINGLE_SELECT / MULTI_SELECT
+ */
+model SelectOption {
+  id      Int   @id @default(autoincrement())
+  fieldId Int
+  field   Field @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  label    String
+  color    String?
+  position Int     @default(0)
+
+  isTrashed Boolean   @default(false)
+  trashedAt DateTime?
+
+  // m2m (MULTI_SELECT)
+  usedBy RecordCellOption[]
+
+  // backref del SINGLE_SELECT (Prisma lo infiere por selectOptionId)
+  singleCells RecordCell[]
+
+  @@unique([fieldId, label, isTrashed])
+  @@index([fieldId, position])
+  @@index([isTrashed])
+  @@index([trashedAt])
+}
+
 model RecordRow {
-  id        Int       @id @default(autoincrement())
-  tableId   Int
+  id      Int @id @default(autoincrement())
+  tableId Int
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  // Auditoría de usuario
   createdById Int?
   createdBy   User? @relation("RecordRowCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedById Int?
   updatedBy   User? @relation("RecordRowUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
-  // Papelera
-  isTrashed  Boolean   @default(false)
-  trashedAt  DateTime?
+  isTrashed Boolean   @default(false)
+  trashedAt DateTime?
 
-  table      TableDef  @relation(fields: [tableId], references: [id], onDelete: Cascade)
-  cells      RecordCell[]
+  table TableDef     @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  cells RecordCell[]
+
+  comments Comment[] // NEW: backref para listar todos los comentarios asociados a esta fila
 
   @@index([tableId])
   @@index([updatedAt])
@@ -251,16 +253,14 @@ model RecordRow {
   @@index([trashedAt])
 }
 
-// === Celda: valor para el par (recordId, fieldId) ===
 model RecordCell {
-  id       Int   @id @default(autoincrement())
+  id       Int @id @default(autoincrement())
   recordId Int
   fieldId  Int
 
-  record   RecordRow @relation(fields: [recordId], references: [id], onDelete: Cascade)
-  field    Field     @relation(fields: [fieldId],  references: [id], onDelete: Cascade)
+  record RecordRow @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  field  Field     @relation(fields: [fieldId], references: [id], onDelete: Cascade)
 
-  // Auditoría y tiempos
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   createdById Int?
@@ -268,15 +268,65 @@ model RecordCell {
   updatedById Int?
   updatedBy   User?    @relation("RecordCellUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
-  // Se usa SOLO UNA columna según Field.type
+  // valores por tipo
   stringValue   String?
   numberValue   Decimal?
   boolValue     Boolean?
   dateValue     DateTime?
   datetimeValue DateTime?
 
+  // TIME
+  timeMinutes Int?
+
+  // SINGLE_SELECT (relación directa, sin nombre)
+  selectOptionId Int?
+  selectOption   SelectOption? @relation(fields: [selectOptionId], references: [id], onDelete: SetNull)
+
+  // MULTI_SELECT (m2m)
+  options RecordCellOption[]
+
   @@unique([recordId, fieldId])
   @@index([fieldId])
   @@index([numberValue])
   @@index([datetimeValue])
+}
+
+model RecordCellOption {
+  recordCellId Int
+  optionId     Int
+  createdAt    DateTime @default(now())
+
+  recordCell RecordCell   @relation(fields: [recordCellId], references: [id], onDelete: Cascade)
+  option     SelectOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+
+  @@id([recordCellId, optionId])
+  @@index([optionId])
+}
+
+/**
+ * ============================================================
+ * COMENTARIOS (por fila, sin hilos)
+ * ============================================================
+ */
+model Comment {
+  id          Int       @id @default(autoincrement())                                                // NEW: id autoincremental del comentario
+  recordId    Int                                                                                   // NEW: FK a la fila comentada
+  record      RecordRow  @relation(fields: [recordId], references: [id], onDelete: Cascade)         // NEW: comentario pertenece a una fila; si la fila se borra, se borran sus comentarios
+
+  body        String                                                                                // NEW: contenido de texto del comentario
+
+  createdAt   DateTime   @default(now())                                                            // NEW: fecha/hora de creación
+  updatedAt   DateTime   @updatedAt                                                                 // NEW: fecha/hora de última edición
+
+  createdById Int?                                                                                  // NEW: FK al autor (nullable para no romper si el usuario se elimina)
+  createdBy   User?      @relation("CommentAuthor", fields: [createdById], references: [id], onDelete: SetNull) // NEW: autor del comentario
+  updatedById Int?                                                                                  // NEW: FK al último editor (opcional)
+  updatedBy   User?      @relation("CommentEditor", fields: [updatedById], references: [id], onDelete: SetNull) // NEW: último editor del comentario
+
+  isTrashed   Boolean    @default(false)                                                            // NEW: soft delete (no se borra físico de inmediato)
+  trashedAt   DateTime?                                                                             // NEW: cuándo se mandó a papelera
+
+  @@index([recordId, createdAt])                                                                    // NEW: consultas por fila/orden cronológico
+  @@index([isTrashed])                                                                              // NEW: filtrar activos vs papelera
+  @@index([trashedAt])                                                                              // NEW: soporte para purgas por antigüedad
 }
