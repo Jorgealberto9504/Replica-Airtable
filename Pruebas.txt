@@ -1,34 +1,330 @@
-Hoy
+Fields
 
-login con usuario creador
-crear base
-listar bases (listara las bases en las que es dueño y las publicas) las private solo tienen acceso el superusuario, creador y miembros
-modificar base, podemos modificar su nombre o visibilidad
-eliminar base
-
-probar miembros en bases
-entrar con un usuario general para ver su acceso a bases publicas y en las que es miembro
+Listar columnas. GET
+http://localhost:8080/bases/25/tables/36/fields
 
 
+Crear columna. POST
+http://localhost:8080/bases/25/tables/36/fields
 
-usuario creador : 
-  luisa@mbqinc.com
-  Aa12345!
+  columna por tipo distinto
 
-usuario:
-  mario@mbqinc.com
-  Bb12345!
+  { "name": "Nombre", "type": "TEXT" }
+  { "name": "Notas", "type": "LONG_TEXT" }
+  { "name": "Precio", "type": "CURRENCY" }
+  { "name": "Activo", "type": "CHECKBOX" }
+  { "name": "Fecha Compra", "type": "DATE" }
+  { "name": "Cita", "type": "DATETIME" }
+  { "name": "Hora Llamada", "type": "TIME" }
 
-Admin:
-  jorge@mbqinc.com
-  Aa12345!
-
+  {
+  "name": "Estado",
+  "type": "SINGLE_SELECT",
+  "options": [
+    { "label": "Abierto", "color": "#2ecc71" },
+    { "label": "En progreso", "color": "#f1c40f" },
+    { "label": "Cerrado", "color": "#e74c3c" }
+  ]
+}
 
 
 {
-    "name": "Ventas Q4",
-    "visibility": "PRIVATE"
+  "name": "Etiquetas",
+  "type": "MULTI_SELECT",
+  "options": [
+    { "label": "A" },
+    { "label": "B" },
+    { "label": "C" }
+  ]
 }
 
 
 
+Actulizar datos. PATCH
+http://localhost:8080/bases/25/tables/36/fields/102
+
+{ "name": "Nuevo nombre" }
+{ "position": 999 }
+{ "type": "LONG_TEXT" } (solo si no hay datos en esa columna)
+
+
+
+Listar Opciones activas de SINGLE_SELECT o MULTI_SELECT. GET
+http://localhost:8080/bases/25/tables/36/fields/113/options
+
+
+Crear opcion adicional. POST
+http://localhost:8080/bases/25/tables/36/fields/113/options
+{ "label": "En pausa", "color": "#95a5a6" }
+
+
+Actualizar una opcion. PATCH
+http://localhost:8080/bases/25/tables/36/fields/113/options/31
+{ "label": "Pendiente", "color": "#9b59b6" }
+
+
+Reordenar opciones. PATCH
+http://localhost:8080/bases/25/tables/36/fields/113/options/reorder
+con Id de las opciones
+{ "orderedIds": [31,30,29,28] }
+
+
+Soft delete de una opcion. DELETE
+http://localhost:8080/bases/25/tables/36/fields/113/options/31
+volver a listar opciones activas, ya no debe salir.
+
+
+Ver papelera de opciones. GET
+http://localhost:8080/bases/25/tables/36/fields/113/options/trash
+
+Restaurar Opcion. POST
+http://localhost:8080/bases/25/tables/36/fields/113/options/31/restore
+
+Delete Permanente. DELETE
+http://localhost:8080/bases/25/tables/36/fields/113/options/31/permanent
+solo borra permanente si esta en papelera ya la opcion
+
+
+
+
+
+
+
+PAPELERA DE COLUMNAS
+
+Soft Delete de field. DELETE
+http://localhost:8080/bases/25/tables/36/fields
+listar fields activos, no aparecera field borrado
+
+si el field era select, borra sus opciones tambien
+
+
+listar fields en papelera. GET
+http://localhost:8080/bases/25/tables/36/fields/trash
+
+
+
+Restaurar field. POST
+http://localhost:8080/bases/25/tables/36/fields/113/restore
+
+listar fields activos
+
+
+
+Borrado Permanente de field. DELETE
+http://localhost:8080/bases/25/tables/36/fields/113/permanent
+
+revisar en base de datos
+
+
+
+
+
+
+
+
+Vaciar papelera. POST
+
+borrar 2 fields antes de pegarle a este endpoint para ver como vacia la papelera
+
+http://localhost:8080/bases/25/tables/36/fields/trash/empty
+
+
+
+
+
+
+CREAR NUEVAMENTE LAS COLUMNAS SELECTSIMGLE Y MULTISELECT PARA PROBAR LOS RECORDS
+
+
+
+Records
+
+Listado de records paginado. GET
+http://localhost:8080/bases/25/tables/36/records?page=1&pageSize=50
+
+
+Listado de records sin paginar. GET
+http://localhost:8080/bases/25/tables/36/records?all=1
+
+
+Crear registros. POST
+http://localhost:8080/bases/25/tables/36/records
+
+{
+  "values": {
+    "116": "Juan Pérez",                 // TEXT
+    "117": "Cliente con seguimiento",    // LONG_TEXT
+    "118": 999.99,                       // CURRENCY
+    "119": true,                         // CHECKBOX
+    "120": "2025-10-12",                 // DATE (YYYY-MM-DD)
+    "121": "2025-10-12T15:30:00.000Z",   // DATETIME (ISO)
+    "122": "07:05",                      // TIME ("HH:mm") o 425
+    "125": 45,                           // SINGLE_SELECT (optionId válido del field 114)
+    "126": [49, 50]                      // MULTI_SELECT (optionIds válidos del field 115)
+  }
+}
+
+Actualizar celdas. PATCH
+http://localhost:8080/bases/25/tables/36/records/51
+{
+  "values": {
+    "104": "Juan Juarez (editado)",   // TEXT
+    "106": 1200.5,                   // CURRENCY
+    "110": "08:45"                   // TIME ("HH:mm") o minutos 0..1439
+  }
+}
+
+Actualizar single y multiselect
+
+{
+  "values": {
+    "114": 32,        // SINGLE_SELECT -> optionId válido del field 114
+    "115": [35, 36]   // MULTI_SELECT  -> array de optionIds válidos del field 115
+  }
+}
+
+Limpiar valores. PATCH
+http://localhost:8080/bases/25/tables/36/records/51
+{
+  "values": {
+    "105": null,   // LONG_TEXT -> null
+    "109": null    // DATETIME -> null
+  }
+}
+
+Limpiar slecciones
+
+{
+  "values": {
+    "114": null,  // SINGLE_SELECT -> sin selección
+    "115": []     // MULTI_SELECT  -> sin opciones
+  }
+}
+
+
+
+Enviar una fila a papelera. DELETE
+http://localhost:8080/bases/25/tables/36/records/51
+
+
+listar papelera de filas. GET
+http://localhost:8080/bases/25/tables/36/records/trash
+
+
+Restaurar una fila  POST
+http://localhost:8080/bases/25/tables/36/records/51/restore
+
+
+Borrar permanente. DELETE
+http://localhost:8080/bases/25/tables/36/records/51/permanent
+
+
+vaiar papelera. DELETE
+http://localhost:8080/bases/25/tables/36/records/trash/empty
+
+
+
+
+
+
+
+
+
+
+PRUEBAS TAREA 8.4 <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+Pendiente de dia viernes
+
+position de columnas. PATCH
+http://localhost:8080/bases/25/tables/36/fields/117
+
+{ "position": 200 }
+
+
+
+
+3.Crear columna SIN nombre. POST
+ http://localhost:8080/bases/25/tables/36/fields
+
+{ "type": "TEXT" }
+
+
+4 Crear columna con tipo invalido. POST
+http://localhost:8080/bases/25/tables/36/fields
+
+{ "name": "TipoInvalido", "type": "FOO" }
+
+
+
+5 Crear columna DUPLICADA (mismo nombre en la tabla). POST
+http://localhost:8080/bases/25/tables/36/fields
+
+{ "name": "Nombre", "type": "TEXT" }
+
+
+
+6 Renombrar columna existente con un nombre ya existente. PATCH
+http://localhost:8080/bases/25/tables/36/fields/117
+
+{ "name": "Nombre" }
+
+
+7 Cambiar columna a tipo SELECT SIN mandar los options. PATCH
+http://localhost:8080/bases/25/tables/36/fields/117
+
+{ "type": "MULTI_SELECT" }
+
+
+8. Cambior tipo de dato a una columna con datos ya cargados. PATCH
+http://localhost:8080/bases/25/tables/36/fields/116
+
+{ "type": "NUMBER" }
+
+
+9 Ingresar datos tipo option a una columna de otro tipo
+http://localhost:8080/bases/25/tables/36/fields/116/options
+
+{ "label": "Abierto" }
+
+
+
+10 Crear opción DUPLICADA (mismo label). POST
+http://localhost:8080/bases/25/tables/36/fields/126/options
+
+{ "label": "Abierto" }
+
+
+
+11 Restaurar opción que NO está en papelera. POST
+http://localhost:8080/bases/25/tables/36/fields/126/options/6/restore
+
+12 Borrar PERMANENTE una opción ACTIVA. DELETE
+http://localhost:8080/bases/25/tables/36/fields/126/options/51/permanent
+
+
+13 Restaurar columna que no esta en papelera. POST
+http://localhost:8080/bases/25/tables/36/fields/117/restore
+
+14. Borrar permanentemente una columna que esta activa. DELETE
+http://localhost:8080/bases/25/tables/36/fields/117/permanent
+
+
+15 soft delete a columna y luego intentar cambiar datos de una de sus celdas
+
+DELETE
+http://localhost:8080/bases/25/tables/36/fields/116
+
+
+PATCH
+http://localhost:8080/bases/25/tables/36/records/51
+
+{
+  "values": {
+    "448": "Juan Juarez (editado)" 
+  }
+}
+
+
+POST
+http://localhost:8080/bases/25/tables/36/fields/116/restore

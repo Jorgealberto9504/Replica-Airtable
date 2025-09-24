@@ -178,7 +178,7 @@ export default function TabsBar({
             }}
           >
             <button className="menu-item" onClick={() => { closeMenu(); onRename(menuFor); }}>Renombrar</button>
-            <button className="menu-item" onClick={() => { closeMenu(); onTrash(menuFor); }}>Enviar a papelera</button>
+            <button className="menu-item-eliminar" onClick={() => { closeMenu(); onTrash(menuFor); }}>Enviar a papelera</button>
           </div>
         </>
       )}

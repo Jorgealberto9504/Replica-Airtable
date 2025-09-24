@@ -8,6 +8,6 @@
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true
   },
-  "include": ["src"],
+  "include": ["src", "scripts/run-negative-tests.mjs"],
   "exclude": ["node_modules", "dist"]
 }

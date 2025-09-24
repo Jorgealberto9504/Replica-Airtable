@@ -14,10 +14,12 @@ import workspacesRouter from './routes/workspaces.routes.js';
 // 👇 NUEVO: endpoints CRUD de columnas y registros
 import fieldsRouter from './routes/fields.routes.js';
 import recordsRouter from './routes/records.routes.js';
+import { errorHandler } from './middlewares/error.middleware.js';
+
 
 const app = express();
 
-const FRONTEND = process.env.FRONTEND_ORIGIN ?? 'http://localhost:5173';
+const FRONTEND = process.env.FRONTEND_ORIGIN
 app.use(
   cors({
     origin: FRONTEND,
@@ -46,4 +48,5 @@ app.use('/workspaces', workspacesRouter);
 app.use('/bases/:baseId/tables/:tableId/fields', fieldsRouter);
 app.use('/bases/:baseId/tables/:tableId/records', recordsRouter);
 
+app.use(errorHandler);
 export default app;
