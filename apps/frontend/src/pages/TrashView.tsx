@@ -1,3 +1,4 @@
+// apps/frontend/src/pages/TrashView.tsx
 import { useEffect, useState } from 'react';
 import Header from '../components/Header';
 import { useAuth } from '../auth/AuthContext';
@@ -5,7 +6,6 @@ import {
   listMyTrashedBases, restoreBase, deleteBasePermanent, emptyMyBaseTrash,
   listTrashedTablesForBase, restoreTable, deleteTablePermanent, emptyTableTrash,
   listMyTrashedWorkspacesSafe, restoreWorkspace, deleteWorkspacePermanent, emptyWorkspaceTrash,
-  // 👇 nuevos (admin)
   listAllTrashedTablesAdmin, restoreTableAdmin, deleteTablePermanentAdmin,
 } from '../api/trash';
 import { listBases } from '../api/bases';
@@ -20,19 +20,18 @@ type TableTrashItemUI = {
   baseId: number;
   baseName: string;
   ownerName?: string;
-  isAdmin: boolean; // para decidir qué endpoints usar al restaurar/borrar
+  isAdmin: boolean;
 };
 
 export default function TrashView() {
   const { user, logout } = useAuth();
   const isAdmin = user?.platformRole === 'SYSADMIN';
 
-  /** Tabs */
   const [tab, setTab] = useState<Tab>('bases');
 
-  /** ====== BASES ====== */
   const [bases, setBases] = useState<Array<{ id:number; name:string; visibility:'PUBLIC'|'PRIVATE'; trashedAt?:string }>>([]);
   const [loadingBases, setLoadingBases] = useState(false);
+
   async function loadBases() {
     setLoadingBases(true);
     try {
@@ -43,7 +42,6 @@ export default function TrashView() {
     }
   }
 
-  /** ====== TABLAS (ahora global por rol) ====== */
   const [tables, setTables] = useState<TableTrashItemUI[]>([]);
   const [loadingTables, setLoadingTables] = useState(false);
 
@@ -51,7 +49,6 @@ export default function TrashView() {
     setLoadingTables(true);
     try {
       if (isAdmin) {
-        // Admin: un solo endpoint global con base y owner incluidos
         const r = await listAllTrashedTablesAdmin();
         const rows: TableTrashItemUI[] = (r.tables || []).map(t => ({
           id: t.id,
@@ -64,7 +61,6 @@ export default function TrashView() {
         }));
         setTables(rows);
       } else {
-        // User: agregamos todas sus bases accesibles + papelera de cada base
         const lb = await listBases({ page: 1, pageSize: 500 });
         const basesMap = new Map<number, { name: string; ownerName?: string }>();
         lb.bases.forEach(b => basesMap.set(b.id, { name: b.name, ownerName: (b as any).owner?.fullName ?? (b as any).ownerName }));
@@ -94,7 +90,6 @@ export default function TrashView() {
     }
   }
 
-  // Vaciar TODA la papelera de tablas (todas las bases representadas en la lista)
   async function emptyAllTablesTrash() {
     const ok = await confirmToast({
       title: 'Vaciar papelera de tablas',
@@ -106,29 +101,27 @@ export default function TrashView() {
     if (!ok) return;
 
     if (isAdmin) {
-      // Admin: borra tabla por tabla con endpoint admin
       for (const t of tables) {
         try {
           await deleteTablePermanentAdmin(t.baseId, t.id);
-        } catch { /* opcional: toast por error */ }
+        } catch {}
       }
     } else {
-      // User: vacía por base usando el endpoint existente
       const baseIds = Array.from(new Set(tables.map(t => t.baseId)));
       for (const baseId of baseIds) {
         try {
           await emptyTableTrash(baseId);
-        } catch { /* opcional: toast por error */ }
+        } catch {}
       }
     }
 
     await loadTablesAll();
   }
 
-  /** ====== WORKSPACES (opcional) ====== */
   const [workspaces, setWorkspaces] = useState<Array<{ id:number; name:string; trashedAt?:string }>>([]);
   const [loadingWS, setLoadingWS] = useState(false);
   const [wsAvailable, setWsAvailable] = useState(true);
+
   async function loadWorkspaces() {
     setLoadingWS(true);
     try {
@@ -140,7 +133,6 @@ export default function TrashView() {
     }
   }
 
-  // Cargas iniciales por tab
   useEffect(() => {
     if (tab === 'bases') loadBases();
     if (tab === 'tables') loadTablesAll();
@@ -148,18 +140,15 @@ export default function TrashView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, isAdmin]);
 
-  const headerRight = <div />;
-
   return (
     <>
       <Header user={user ?? undefined} onLogout={logout} />
       <main className="content">
-        <div className="list-toolbar" style={{ marginTop: 20 }}>
-          <h2 style={{ margin: 0 }}>Papelera de reciclaje</h2>
+        <div className="list-toolbar mt-5">
+          <h2 className="section-title m-0">Papelera de reciclaje</h2>
         </div>
 
-        {/* Tabs superiores */}
-        <div style={{ display:'flex', gap:8, marginBottom:12 }}>
+        <div className="flex gap-2 mb-3">
           {wsAvailable && (
             <button className="chip" aria-pressed={tab==='workspaces'} onClick={() => setTab('workspaces')}>
               Workspaces
@@ -173,14 +162,10 @@ export default function TrashView() {
           </button>
         </div>
 
-        {/* ===== WORKSPACES ===== */}
         {tab === 'workspaces' && (
           <section>
             {!wsAvailable ? (
-              <div className="card">
-                <b>Workspaces no disponible.</b>
-                <div className="muted">Tu backend aún no expone la papelera de workspaces.</div>
-              </div>
+              <div className="card">Workspaces no disponible.</div>
             ) : loadingWS ? (
               <div className="card">Cargando…</div>
             ) : workspaces.length === 0 ? (
@@ -194,11 +179,11 @@ export default function TrashView() {
                         <div className="base-card-title">{w.name}</div>
                       </div>
                       <div className="base-card-meta">Eliminado: {w.trashedAt ? new Date(w.trashedAt).toLocaleString() : '—'}</div>
-                      <div style={{ display:'flex', gap:8, marginTop:10 }}>
+                      <div className="flex gap-2 mt-2">
                         <button className="btn" onClick={async () => { await restoreWorkspace(w.id); await loadWorkspaces(); }}>
                           Restaurar
                         </button>
-                        <button className="btn danger" onClick={async () => {
+                        <button className="btn-danger" onClick={async () => {
                           const ok = await confirmToast({
                             title: 'Borrar definitivamente',
                             body: <>Se eliminará el workspace <b>{w.name}</b> y no se podrá recuperar.</>,
@@ -217,7 +202,7 @@ export default function TrashView() {
                 </div>
 
                 <div className="pagination">
-                  <button className="btn danger" onClick={async () => {
+                  <button className="btn-danger" onClick={async () => {
                     const ok = await confirmToast({
                       title: 'Vaciar papelera de workspaces',
                       body: 'Se eliminarán definitivamente todos los workspaces de tu papelera.',
@@ -236,7 +221,6 @@ export default function TrashView() {
           </section>
         )}
 
-        {/* ===== BASES ===== */}
         {tab === 'bases' && (
           <section>
             {loadingBases ? (
@@ -254,11 +238,11 @@ export default function TrashView() {
                       <div className="base-card-meta">
                         {b.visibility === 'PUBLIC' ? 'Pública' : 'Privada'} · Eliminada: {b.trashedAt ? new Date(b.trashedAt).toLocaleString() : '—'}
                       </div>
-                      <div style={{ display:'flex', gap:8, marginTop:10 }}>
+                      <div className="flex gap-2 mt-2">
                         <button className="btn" onClick={async () => { await restoreBase(b.id); await loadBases(); }}>
                           Restaurar
                         </button>
-                        <button className="btn danger" onClick={async () => {
+                        <button className="btn-danger" onClick={async () => {
                           const ok = await confirmToast({
                             title: 'Borrar definitivamente',
                             body: <>¿Eliminar la base <b>{b.name}</b> de forma permanente?</>,
@@ -277,7 +261,7 @@ export default function TrashView() {
                 </div>
 
                 <div className="pagination">
-                  <button className="btn danger" onClick={async () => {
+                  <button className="btn-danger" onClick={async () => {
                     const ok = await confirmToast({
                       title: 'Vaciar papelera de bases',
                       body: 'Se eliminarán definitivamente todas las bases de tu papelera.',
@@ -296,7 +280,6 @@ export default function TrashView() {
           </section>
         )}
 
-        {/* ===== TABLAS (GLOBAL) ===== */}
         {tab === 'tables' && (
           <section>
             {loadingTables ? (
@@ -315,7 +298,7 @@ export default function TrashView() {
                         Eliminada: {t.trashedAt ? new Date(t.trashedAt).toLocaleString() : '—'} ·{' '}
                         <b>Base:</b> {t.baseName}{t.ownerName ? <> · <b>Dueño:</b> {t.ownerName}</> : null}
                       </div>
-                      <div style={{ display:'flex', gap:8, marginTop:10 }}>
+                      <div className="flex gap-2 mt-2">
                         <button
                           className="btn"
                           onClick={async () => {
@@ -327,7 +310,7 @@ export default function TrashView() {
                           Restaurar
                         </button>
                         <button
-                          className="btn danger"
+                          className="btn-danger"
                           onClick={async () => {
                             const ok = await confirmToast({
                               title: 'Borrar definitivamente',
@@ -349,9 +332,8 @@ export default function TrashView() {
                   ))}
                 </div>
 
-                {/* Botón global para vaciar TODO lo listado */}
-                <div className="pagination" style={{ marginTop: 16 }}>
-                  <button className="btn danger" onClick={emptyAllTablesTrash}>
+                <div className="pagination mt-4">
+                  <button className="btn-danger" onClick={emptyAllTablesTrash}>
                     Vaciar papelera de tablas
                   </button>
                 </div>

@@ -1,10 +1,11 @@
-// Barra de tabs de tablas con drag & drop y menú contextual
+// apps/frontend/src/pages/components/TabsBar.tsx
+// Barra de tabs de tablas con drag & drop y menú contextual (sin estilos inline fijos)
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { TabItem } from '../../api/tables';
 
 type Props = {
   baseId: number;
-  tabs: TabItem[];                 // puede venir []
+  tabs: TabItem[];
   activeId: number | null;
   canManage: boolean;
   onSelect: (tableId: number) => void;
@@ -15,7 +16,6 @@ type Props = {
 };
 
 export default function TabsBar({
-  baseId: _baseId,
   tabs,
   activeId,
   canManage,
@@ -25,9 +25,13 @@ export default function TabsBar({
   onTrash,
   onReorder,
 }: Props) {
-  const safeTabs = Array.isArray(tabs) ? tabs : [];
+  // ✅ Memoiza safeTabs para contentar a react-hooks/exhaustive-deps
+  const safeTabs = useMemo<TabItem[]>(
+    () => (Array.isArray(tabs) ? tabs : []),
+    [tabs]
+  );
 
-  // === menú contextual ===
+  // menú contextual
   const [menuFor, setMenuFor] = useState<number | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left?: number; right?: number }>({ top: 0, left: 0 });
   function openMenu(e: React.MouseEvent, tabId: number) {
@@ -40,11 +44,10 @@ export default function TabsBar({
   }
   function closeMenu() { setMenuFor(null); }
 
-  // === scroller + flechas ===
+  // scroller + flechas
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const [showLeft, setShowLeft]   = useState(false);
+  const [showLeft, setShowLeft] = useState(false);
   const [showRight, setShowRight] = useState(false);
-
   function updateArrows() {
     const el = scrollerRef.current;
     if (!el) return;
@@ -54,16 +57,16 @@ export default function TabsBar({
   function scrollByPx(px: number) {
     scrollerRef.current?.scrollBy({ left: px, behavior: 'smooth' });
   }
-
   useEffect(() => {
     updateArrows();
     const onR = () => updateArrows();
     window.addEventListener('resize', onR);
     return () => window.removeEventListener('resize', onR);
   }, []);
+  // ✅ deps estables (safeTabs memoizado). Si quieres aún más fino: [safeTabs.length]
   useEffect(() => { updateArrows(); }, [safeTabs]);
 
-  // === drag & drop ===
+  // drag & drop
   function onDragStart(e: React.DragEvent<HTMLButtonElement>, id: number) {
     e.dataTransfer.setData('text/plain', String(id));
     e.dataTransfer.effectAllowed = 'move';
@@ -74,18 +77,17 @@ export default function TabsBar({
     e.preventDefault();
     const draggedId = Number(e.dataTransfer.getData('text/plain'));
     if (!draggedId || draggedId === overId) return;
-
-    const ids  = sortedTabs.map(t => t.id);
+    const ids = sortedTabs.map(t => t.id);
     const from = ids.indexOf(draggedId);
-    const to   = ids.indexOf(overId);
+    const to = ids.indexOf(overId);
     if (from < 0 || to < 0) return;
-
     const next = [...ids];
     next.splice(from, 1);
     next.splice(to, 0, draggedId);
     await onReorder(next);
   }
 
+  // ✅ depende de safeTabs memoizado
   const sortedTabs = useMemo(
     () => [...safeTabs].sort((a, b) => a.position - b.position),
     [safeTabs]
@@ -93,7 +95,6 @@ export default function TabsBar({
 
   return (
     <div className="tabs-wrap">
-      {/* Flecha izquierda */}
       {showLeft && (
         <button
           className="tabs-scroll-btn left"
@@ -102,7 +103,6 @@ export default function TabsBar({
         >‹</button>
       )}
 
-      {/* Scroller */}
       <div className="tabs-scroller" ref={scrollerRef} onScroll={updateArrows}>
         <div className="tabs-strip">
           {sortedTabs.map(t => {
@@ -125,7 +125,8 @@ export default function TabsBar({
                   {t.name}
                 </button>
 
-                {/* 👇 Solo existe en la pestaña activa */}
+                {/* Si prefieres que siempre se renderice y CSS lo oculte salvo activa:
+                    usa {canManage && ( ... )} y deja el CSS .tab-slot.is-active .tab-menu-btn */}
                 {canManage && isActive && (
                   <button
                     className="tab-menu-btn"
@@ -146,7 +147,6 @@ export default function TabsBar({
         </div>
       </div>
 
-      {/* Flecha derecha */}
       {showRight && (
         <button
           className="tabs-scroll-btn right"
@@ -155,26 +155,16 @@ export default function TabsBar({
         >›</button>
       )}
 
-      {/* Menú contextual */}
       {menuFor != null && (
         <>
-          <div
-            onClick={closeMenu}
-            style={{ position: 'fixed', inset: 0, background: 'transparent', zIndex: 49 }}
-          />
+          <div className="context-overlay" onClick={closeMenu} />
           <div
             role="menu"
+            className="context-panel"
             style={{
               position: 'fixed',
               top: menuPos.top,
               ...(menuPos.left != null ? { left: menuPos.left } : { right: menuPos.right }),
-              zIndex: 50,
-              background: '#fff',
-              border: '1px solid #e5e7eb',
-              borderRadius: 10,
-              boxShadow: '0 10px 20px rgba(0,0,0,.08)',
-              width: 220,
-              padding: 6,
             }}
           >
             <button className="menu-item" onClick={() => { closeMenu(); onRename(menuFor); }}>Renombrar</button>

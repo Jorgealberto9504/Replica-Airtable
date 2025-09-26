@@ -1,3 +1,4 @@
+// apps/frontend/src/pages/BaseView.tsx
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -39,22 +40,18 @@ export default function BaseView() {
 
   const [gridMeta, setGridMeta] = useState<any>(null);
 
-  // META columnas (7.3.4)
   const [cols, setCols] = useState<GridColumnMeta[]>([]);
   const [loadingCols, setLoadingCols] = useState(false);
 
   const [canManage, setCanManage] = useState(false);
 
-  // Miembros modal
   const [openMembers, setOpenMembers] = useState(false);
 
-  // Modales crear/renombrar
   const [openCreate, setOpenCreate] = useState(false);
   const [openRename, setOpenRename] = useState<{ open: boolean; id?: number }>({ open: false });
   const [formName, setFormName] = useState('');
   const [formErr, setFormErr] = useState<string>('');
 
-  // ====== Detalle de base y permisos efectivos ======
   useEffect(() => {
     (async () => {
       const d = await getBaseDetail(baseId);
@@ -68,7 +65,6 @@ export default function BaseView() {
     })();
   }, [baseId, me?.id, me?.platformRole]);
 
-  // ====== Cargar tabs (NO toca la selección activa; la controla la URL) ======
   async function refreshTabs() {
     setLoadingTabs(true);
     try {
@@ -80,11 +76,10 @@ export default function BaseView() {
   }
   useEffect(() => { refreshTabs(); /* eslint-disable-next-line */ }, [baseId]);
 
-  // ====== Resolver tabla por defecto si no hay :tableId ======
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!baseId || urlTableId != null) return; // ya tenemos tabla en URL
+      if (!baseId || urlTableId != null) return;
       setResolving(true);
       try {
         const r = await resolveBase(baseId);
@@ -100,7 +95,6 @@ export default function BaseView() {
     return () => { cancelled = true; };
   }, [baseId, urlTableId, nav]);
 
-  // ====== Normalizar si la URL trae un tableId inexistente ======
   const sortedTabs = useMemo(
     () => [...tabs].sort((a, b) => a.position - b.position),
     [tabs]
@@ -114,7 +108,6 @@ export default function BaseView() {
     }
   }, [loadingTabs, urlTableId, sortedTabs, baseId, nav]);
 
-  // ====== Cargar metadatos de columnas cuando cambia la tabla activa ======
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -133,7 +126,6 @@ export default function BaseView() {
     return () => { cancelled = true; };
   }, [baseId, urlTableId]);
 
-  // ====== Handlers TabsBar ======
   function handleSelect(tableId: number) {
     if (tableId !== urlTableId) nav(`/bases/${baseId}/t/${tableId}`);
   }
@@ -178,7 +170,6 @@ export default function BaseView() {
     }
   }
 
-  // Guardar “Nueva tabla”
   async function submitCreate() {
     if (!formName.trim()) return;
     try {
@@ -193,7 +184,6 @@ export default function BaseView() {
     }
   }
 
-  // Guardar “Renombrar tabla”
   async function submitRename() {
     if (!formName.trim() || !openRename.id) return;
     try {
@@ -207,12 +197,11 @@ export default function BaseView() {
     }
   }
 
-  /* >>> Cambiado aquí: usa degradado MBQ y formato pill/pequeño <<< */
   const headerRight = (
-    <div style={{ display: 'flex', gap: 8 }}>
+    <div className="flex gap-2">
       {canManage && (
         <button
-          className="btn primary pill sm"
+          className="btn-primary pill btn-sm"
           onClick={() => setOpenMembers(true)}
           title="Gestionar miembros"
         >
@@ -227,18 +216,16 @@ export default function BaseView() {
   return (
     <>
       <Header user={me ?? undefined} onLogout={logout} />
-      <main style={{ padding: 16 }}>
-        {/* Título de la base */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-          <h1 style={{ margin: 0 }}>{baseName}</h1>
-          <span className="badge" style={{ background: '#ecfdf5', color: '#065f46' }}>
+      <main className="content">
+        <div className="flex items-center gap-3 mb-3">
+          <h1 className="m-0 text-2xl font-extrabold">{baseName}</h1>
+          <span className="badge badge-green">
             {visibility === 'PUBLIC' ? 'Pública' : visibility === 'SHARED' ? 'Compartida' : 'Privada'}
           </span>
           {ownerName ? <span className="muted"> · {ownerName}</span> : null}
-          <div style={{ marginLeft: 'auto' }}>{headerRight}</div>
+          <div className="ml-auto">{headerRight}</div>
         </div>
 
-        {/* Barra de tabs */}
         <TabsBar
           baseId={baseId}
           tabs={sortedTabs}
@@ -251,52 +238,35 @@ export default function BaseView() {
           onReorder={canManage ? handleReorder : undefined}
         />
 
-        {/* Contenido inferior */}
         {loadingTabs || resolving ? (
-          <div className="card" style={{ marginTop: 16, color: '#6b7280' }}>Cargando…</div>
+          <div className="card mt-4 text-slate-500">Cargando…</div>
         ) : sortedTabs.length === 0 ? (
-          <div className="card" style={{ marginTop: 16 }}>
+          <div className="card mt-4">
             <b>No hay tablas en esta base.</b>
             <div className="muted">El propietario aún no ha creado tablas.</div>
           </div>
         ) : currentTab ? (
-          <div className="card" style={{ marginTop: 16 }}>
-            <div style={{ marginBottom: 8 }}>
+          <div className="card mt-4">
+            <div className="mb-2">
               Vista de tabla <b>{currentTab.name}</b>
               {gridMeta?.totalTables != null && (
-                <span className="muted" style={{ marginLeft: 8 }}>
+                <span className="muted ml-2">
                   (Meta: {gridMeta.totalTables} tablas en total)
                 </span>
               )}
             </div>
 
-            {/* Header del grid con metadatos de columnas */}
             {loadingCols ? (
               <div className="muted">Cargando columnas…</div>
             ) : cols.length === 0 ? (
               <div className="muted">Aún no hay columnas definidas.</div>
             ) : (
-              <div
-                style={{
-                  display: 'grid',
-                  gridAutoFlow: 'column',
-                  gridAutoColumns: 'min-content',
-                  gap: 8,
-                  overflowX: 'auto',
-                  paddingBottom: 6,
-                  borderBottom: '1px solid #e5e7eb',
-                }}
-              >
+              <div className="grid grid-flow-col auto-cols-min gap-2 overflow-x-auto pb-1 border-b border-slate-200">
                 {cols.map(c => (
                   <div
                     key={c.id}
-                    className="chip"
-                    style={{
-                      minWidth: (c.width ?? 140),
-                      fontWeight: 700,
-                      background: '#f9fafb',
-                      border: '1px solid #e5e7eb',
-                    }}
+                    className="chip font-extrabold bg-slate-50 border border-slate-200"
+                    style={{ minWidth: (c.width ?? 140) }}
                     title={`${c.label} (${c.type})`}
                   >
                     {c.label}
@@ -306,21 +276,17 @@ export default function BaseView() {
             )}
           </div>
         ) : (
-          <div className="card" style={{ marginTop: 16 }}>
-            Normalizando selección…
-          </div>
+          <div className="card mt-4">Normalizando selección…</div>
         )}
       </main>
 
-      {/* Modal miembros */}
       <MembersModal baseId={baseId} open={openMembers} onClose={() => setOpenMembers(false)} />
 
-      {/* Modales crear/renombrar */}
       {(openCreate || openRename.open) && (
         <div className="modal-backdrop">
           <div className="modal-card">
             <div className="modal-header">
-              <h3 style={{ margin: 0 }}>
+              <h3 className="m-0 font-bold">
                 {openCreate ? 'Nueva tabla' : 'Renombrar tabla'}
               </h3>
               <button
@@ -342,7 +308,7 @@ export default function BaseView() {
                 placeholder="Nombre de la tabla"
                 autoFocus
               />
-              {formErr && <div className="alert error" style={{ marginTop: 8 }}>{formErr}</div>}
+              {formErr && <div className="alert-error mt-2">{formErr}</div>}
             </div>
             <div className="modal-footer">
               <button
@@ -355,7 +321,7 @@ export default function BaseView() {
               >
                 Cancelar
               </button>
-              <button className="btn primary" onClick={openCreate ? submitCreate : submitRename}>
+              <button className="btn-primary" onClick={openCreate ? submitCreate : submitRename}>
                 Guardar
               </button>
             </div>

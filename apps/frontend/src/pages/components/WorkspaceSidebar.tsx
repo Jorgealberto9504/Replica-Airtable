@@ -1,4 +1,5 @@
-// Sidebar de Workspaces (columna izquierda)
+// apps/frontend/src/pages/components/WorkspaceSidebar.tsx
+// Sidebar de Workspaces con menú contextual y modal renombrar (sin estilos inline fijos)
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Workspace } from '../../api/workspaces';
@@ -47,25 +48,17 @@ export default function WorkspaceSidebar({
     })();
   }, []);
 
-  // 👇 NUEVO: escuchar creación de workspace y actualizar la lista al instante
   useEffect(() => {
     const onCreated = (ev: Event) => {
       const ws = (ev as CustomEvent<Workspace>).detail;
       if (!ws) return;
-      setItems((prev) => {
-        // evita duplicados si ya está en la lista
-        if (prev.some((x) => x.id === ws.id)) return prev;
-        return [ws, ...prev];
-      });
+      setItems(prev => (prev.some(x => x.id === ws.id) ? prev : [ws, ...prev]));
     };
     window.addEventListener('workspace:created', onCreated as EventListener);
     return () => window.removeEventListener('workspace:created', onCreated as EventListener);
   }, []);
 
-  // --- helpers de posicionamiento del menú ---
-  function clamp(n: number, min: number, max: number) {
-    return Math.max(min, Math.min(max, n));
-  }
+  function clamp(n: number, min: number, max: number) { return Math.max(min, Math.min(max, n)); }
   function computeMenuPosition(anchor: HTMLElement, menuEl?: HTMLElement) {
     const pad = 8;
     const rect = anchor.getBoundingClientRect();
@@ -154,7 +147,6 @@ export default function WorkspaceSidebar({
       danger: true,
     });
     if (!ok) return;
-
     try {
       await deleteWorkspace(w.id);
       await reload();
@@ -167,62 +159,46 @@ export default function WorkspaceSidebar({
   }
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: 12, gap: 8 }}>
-      <div ref={scrollRef} style={{ overflowY: 'auto', paddingRight: 4 }}>
-        <div
+    <div className="h-full flex flex-col p-3 gap-2">
+      <div ref={scrollRef} className="overflow-y-auto pr-1">
+        <button
           onClick={() => { setOpenMenuId(null); onSelect(0); }}
-          style={{
-            padding: '8px 12px',
-            borderRadius: 8,
-            cursor: 'pointer',
-            background: selectedId === 0 ? '#eef2ff' : 'transparent',
-            fontWeight: selectedId === 0 ? 700 : 500,
-            marginBottom: 8,
-          }}
+          className={`w-full text-left rounded-md px-3 py-2 mb-2 ${
+            selectedId === 0 ? 'bg-indigo-50 font-extrabold' : 'hover:bg-slate-100'
+          }`}
         >
           Explorar
-          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>Miembro + públicas</div>
-        </div>
+          <div className="text-xs text-slate-500 mt-0.5">Miembro + públicas</div>
+        </button>
 
         {loading ? (
-          <div style={{ color: '#6b7280', padding: 8 }}>Cargando…</div>
+          <div className="text-slate-500 p-2">Cargando…</div>
         ) : items.length === 0 ? (
-          <div style={{ color: '#9ca3af', padding: 8 }}>Sin workspaces</div>
+          <div className="text-slate-400 p-2">Sin workspaces</div>
         ) : (
           items.map((w) => (
             <div
               key={w.id}
               onClick={() => { setOpenMenuId(null); onSelect(w.id); }}
-              style={{
-                position: 'relative',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '8px 10px',
-                borderRadius: 8,
-                cursor: 'pointer',
-                background: selectedId === w.id ? '#eef2ff' : 'transparent',
-                fontWeight: selectedId === w.id ? 700 : 500,
-                marginBottom: 6,
-              }}
+              className={`relative flex items-center gap-2 px-2.5 py-2 mb-1.5 rounded-md cursor-pointer ${
+                selectedId === w.id ? 'bg-indigo-50 font-extrabold' : 'hover:bg-slate-100'
+              }`}
             >
-              <div style={{ flex: 1, minWidth: 0 }}>{w.name}</div>
+              <div className="flex-1 min-w-0 truncate">{w.name}</div>
+
               <button
                 aria-label="Opciones"
                 title="Opciones"
                 ref={(el) => { if (el) btnRefs.current.set(w.id, el); else btnRefs.current.delete(w.id); }}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setOpenMenuId((prev) => {
+                  setOpenMenuId(prev => {
                     const next = prev === w.id ? null : w.id;
                     requestAnimationFrame(() => repositionMenu());
                     return next;
                   });
                 }}
-                style={{
-                  border: 'none', background: 'transparent', cursor: 'pointer',
-                  fontSize: 18, lineHeight: 1, padding: '2px 6px', borderRadius: 6,
-                }}
+                className="text-lg leading-none px-1.5 py-0.5 rounded-md hover:bg-slate-100"
               >
                 ⋮
               </button>
@@ -232,21 +208,11 @@ export default function WorkspaceSidebar({
                   <div
                     ref={menuRef}
                     onClick={(e) => e.stopPropagation()}
-                    style={{
-                      position: 'fixed',
-                      top: menuPos.top,
-                      left: menuPos.left,
-                      minWidth: 180,
-                      background: 'white',
-                      border: '1px solid rgba(0,0,0,0.08)',
-                      borderRadius: 10,
-                      boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)',
-                      zIndex: 3000,
-                      overflow: 'hidden',
-                    }}
+                    className="fixed min-w-[180px] bg-white border border-black/10 rounded-xl shadow-xl z-[3000] overflow-hidden"
+                    style={{ top: menuPos.top, left: menuPos.left }}
                   >
-                    <MenuItem onClick={() => openRenameModal(w)}>Cambiar nombre</MenuItem>
-                    <MenuItem danger onClick={() => handleDelete(w)}>Eliminar</MenuItem>
+                    <button className="menu-item" onClick={() => openRenameModal(w)}>Cambiar nombre</button>
+                    <button className="menu-item-danger" onClick={() => handleDelete(w)}>Eliminar</button>
                   </div>,
                   document.body
                 )}
@@ -256,12 +222,8 @@ export default function WorkspaceSidebar({
       </div>
 
       {canCreate && onOpenCreate && (
-        <div style={{ marginTop: 'auto', paddingTop: 10, borderTop: '1px solid var(--border)', marginBottom: 50 }}>
-          <button
-            onClick={onOpenCreate}
-            className="btn primary"
-            style={{ width: '100%', textAlign: 'center', borderRadius: 10, padding: '10px 12px', fontWeight: 700 }}
-          >
+        <div className="mt-auto pt-3 border-t border-slate-200 mb-12">
+          <button onClick={onOpenCreate} className="btn-primary w-full text-center font-extrabold">
             + Nuevo workspace
           </button>
         </div>
@@ -269,35 +231,14 @@ export default function WorkspaceSidebar({
 
       {renameTarget &&
         createPortal(
-          <>
-            <div
-              onClick={() => !saving && setRenameTarget(null)}
-              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 3500 }}
-            />
-            <div
-              role="dialog"
-              aria-modal="true"
-              style={{ position: 'fixed', zIndex: 3600, inset: 0, display: 'grid', placeItems: 'center', padding: 16 }}
-              onKeyDown={(e) => { if (e.key === 'Escape' && !saving) setRenameTarget(null); }}
-            >
-              <div
-                className="card"
-                style={{
-                  width: '100%', maxWidth: 520, background: '#fff', borderRadius: 16,
-                  boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)',
-                  padding: 16, position: 'relative',
-                }}
-              >
-                <button
-                  onClick={() => !saving && setRenameTarget(null)}
-                  aria-label="Cerrar"
-                  style={{ position: 'absolute', right: 12, top: 12, border: 'none', background: 'transparent', fontSize: 18, cursor: 'pointer' }}
-                >
-                  ×
-                </button>
+          <div className="modal-backdrop" onClick={() => !saving && setRenameTarget(null)}>
+            <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3 className="m-0 font-bold">Cambiar nombre</h3>
+                <button className="modal-close" onClick={() => !saving && setRenameTarget(null)}>×</button>
+              </div>
 
-                <h3 style={{ margin: '4px 0 12px', fontSize: 18, fontWeight: 700 }}>Cambiar nombre</h3>
-
+              <div className="modal-body">
                 <input
                   autoFocus
                   value={renameValue}
@@ -305,51 +246,19 @@ export default function WorkspaceSidebar({
                   onKeyDown={(e) => { if (e.key === 'Enter' && !saving) confirmRename(); }}
                   placeholder="Nombre del workspace"
                   className="input"
-                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border, #e5e7eb)', outline: 'none', fontSize: 14 }}
                 />
+              </div>
 
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
-                  <button className="btn" onClick={() => !saving && setRenameTarget(null)} disabled={saving}>Cancelar</button>
-                  <button className="btn primary" onClick={confirmRename} disabled={saving || !renameValue.trim()}>
-                    {saving ? 'Guardando…' : 'Guardar'}
-                  </button>
-                </div>
+              <div className="modal-footer justify-end gap-2">
+                <button className="btn" onClick={() => !saving && setRenameTarget(null)} disabled={saving}>Cancelar</button>
+                <button className="btn-primary" onClick={confirmRename} disabled={saving || !renameValue.trim()}>
+                  {saving ? 'Guardando…' : 'Guardar'}
+                </button>
               </div>
             </div>
-          </>,
+          </div>,
           document.body
         )}
     </div>
-  );
-}
-
-function MenuItem({
-  children,
-  danger,
-  onClick,
-}: {
-  children: React.ReactNode;
-  danger?: boolean;
-  onClick?: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        width: '100%',
-        textAlign: 'left',
-        padding: '10px 12px',
-        background: 'transparent',
-        border: 'none',
-        cursor: 'pointer',
-        fontWeight: 600,
-        fontSize: 13,
-        color: danger ? '#b91c1c' : '#111827',
-      }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = '#f3f4f6'; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
-    >
-      {children}
-    </button>
   );
 }

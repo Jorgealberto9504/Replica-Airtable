@@ -1,25 +1,23 @@
+// apps/frontend/src/pages/UsersAdminList.tsx
 import { useEffect, useState } from 'react';
 import Header from '../components/Header';
 import Modal from '../components/Modal';
 import { useAuth } from '../auth/AuthContext';
 import { listUsersAdmin, updateUserAdmin, resetUserPasswordAdmin } from '../api/users';
 import type { AdminUser } from '../api/users';
-import { confirmToast } from '../ui/confirmToast'; // 🆕
+import { confirmToast } from '../ui/confirmToast';
 
 export default function UsersAdminList() {
   const { user: me, logout } = useAuth();
 
-  // filtros/paginación
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(12);
 
-  // datos
   const [rows, setRows] = useState<AdminUser[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  // modal edición
   const [openEdit, setOpenEdit] = useState(false);
   const [editing, setEditing] = useState<AdminUser | null>(null);
 
@@ -68,7 +66,6 @@ export default function UsersAdminList() {
     setRows(r.users || []);
     setTotal(r.total || 0);
 
-    // (opcional) pequeño toast de éxito
     await confirmToast({
       title: 'Usuario actualizado',
       body: <>Los cambios se guardaron correctamente.</>,
@@ -80,9 +77,8 @@ export default function UsersAdminList() {
 
   async function doResetPassword() {
     if (!editing) return;
-    await resetUserPasswordAdmin(editing.id); // usa "Aa12345!" por defecto
+    await resetUserPasswordAdmin(editing.id);
 
-    // 🆕 reemplaza alert
     await confirmToast({
       title: 'Contraseña restablecida',
       body: <>Se generó la contraseña temporal <b>Aa12345!</b>. Se pedirá cambiarla al iniciar sesión.</>,
@@ -107,8 +103,8 @@ export default function UsersAdminList() {
       />
 
       <main className="content">
-        <div className="list-toolbar" style={{ marginTop: 20, gap: 8 }}>
-          <h2 style={{ margin: 0, flex: 1 }}>Gestionar usuarios</h2>
+        <div className="list-toolbar mt-5 gap-2">
+          <h2 className="section-title m-0 flex-1">Gestionar usuarios</h2>
           <select
             className="select"
             value={limit}
@@ -135,7 +131,7 @@ export default function UsersAdminList() {
                   {u.email} · Rol: <b>{u.platformRole}</b> · Estado: <b>{u.isActive ? 'Activo' : 'Inactivo'}</b>
                   {u.canCreateBases ? ' · Creador' : ''}
                 </div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                <div className="flex gap-2 mt-2">
                   <button className="btn" onClick={() => openEditFor(u)}>Editar</button>
                 </div>
               </div>
@@ -143,18 +139,18 @@ export default function UsersAdminList() {
           </div>
         )}
 
-        <div className="pagination" style={{ marginTop: 14 }}>
+        <div className="pagination mt-3">
           <button className="btn" disabled={page<=1} onClick={() => setPage(p => Math.max(1, p-1))}>Anterior</button>
-          <span style={{ padding: '0 8px' }}>Página {page} de {pages}</span>
+          <span className="px-2">Página {page} de {pages}</span>
           <button className="btn" disabled={page>=pages} onClick={() => setPage(p => Math.min(pages, p+1))}>Siguiente</button>
         </div>
       </main>
 
-      <Modal open={openEdit} onClose={() => setOpenEdit(false)} title="Editar usuario" width={760}>
+      <Modal open={openEdit} onClose={() => setOpenEdit(false)} title="Editar usuario">
         {!editing ? null : (
           <>
-            <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 1fr' }}>
-              <label style={{ display: 'grid', gap: 6 }}>
+            <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
+              <label className="grid gap-1.5">
                 <span className="muted">Nombre completo</span>
                 <input
                   className="input"
@@ -163,12 +159,12 @@ export default function UsersAdminList() {
                 />
               </label>
 
-              <label style={{ display: 'grid', gap: 6 }}>
+              <label className="grid gap-1.5">
                 <span className="muted">Email (no editable)</span>
                 <input className="input" value={editing.email} disabled />
               </label>
 
-              <label style={{ display: 'grid', gap: 6 }}>
+              <label className="grid gap-1.5">
                 <span className="muted">Rol de plataforma</span>
                 <select
                   className="select"
@@ -180,7 +176,7 @@ export default function UsersAdminList() {
                 </select>
               </label>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16, paddingTop: 26 }}>
+              <div className="flex items-center gap-4 pt-6">
                 <label className="checkbox">
                   <input
                     type="checkbox"
@@ -199,10 +195,10 @@ export default function UsersAdminList() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
+            <div className="flex gap-2 mt-4 justify-end">
               <button className="btn" onClick={() => setOpenEdit(false)}>Cancelar</button>
-              <button className="btn danger" onClick={doResetPassword}>Resetear contraseña…</button>
-              <button className="btn primary" onClick={saveEdit}>Guardar</button>
+              <button className="btn-danger" onClick={doResetPassword}>Resetear contraseña…</button>
+              <button className="btn-primary" onClick={saveEdit}>Guardar</button>
             </div>
           </>
         )}
