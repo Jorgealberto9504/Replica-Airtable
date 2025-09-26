@@ -1,3 +1,4 @@
+// apps/frontend/src/pages/BasesList.tsx
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
@@ -7,7 +8,6 @@ import {
   renameBase,
   deleteBase,
   type BaseListItem,
-  type BaseVisibility,
 } from '../api/bases';
 import CreateBaseAnywhereModal from './components/CreateBaseAnywhereModal';
 
@@ -23,17 +23,14 @@ export default function BasesList() {
   const [items, setItems] = useState<BaseListItem[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // crear base (en cualquier workspace)
   const [openCreate, setOpenCreate] = useState(false);
 
-  // renombrar
   const [openRename, setOpenRename] = useState<{ open: boolean; id?: number; current?: string }>({ open: false });
   const [renameName, setRenameName] = useState('');
   const [renameErr, setRenameErr] = useState('');
 
   const canManage = me?.platformRole === 'SYSADMIN' || !!me?.canCreateBases;
 
-  // debounce búsqueda
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(q.trim()), 350);
     return () => clearTimeout(t);
@@ -47,7 +44,6 @@ export default function BasesList() {
         pageSize: pager.pageSize,
         q: debouncedQ,
       });
-      // si el backend devuelve total, úsalo; si no, dejamos undefined y usamos heurística
       setPager(p => ({ ...p, total: r.total }));
       setItems(r.bases);
     } finally {
@@ -60,7 +56,6 @@ export default function BasesList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pager.page, pager.pageSize, debouncedQ]);
 
-  // fallback: si no hay total, calculamos si hay "siguiente" según tamaño
   const lastPage = useMemo(() => {
     if (pager.total != null) {
       return Math.max(1, Math.ceil(pager.total / pager.pageSize));
@@ -72,13 +67,12 @@ export default function BasesList() {
   const hasNext =
     pager.total != null
       ? pager.page < (lastPage ?? 1)
-      : items.length >= pager.pageSize; // heurística si no hay total
+      : items.length >= pager.pageSize;
 
   function goto(page: number) {
     setPager(p => ({ ...p, page: Math.max(1, page) }));
   }
 
-  /* ========== acciones card ========== */
   function openRenameModal(id: number, current: string) {
     setRenameErr('');
     setRenameName(current);
@@ -100,7 +94,6 @@ export default function BasesList() {
   async function submitDelete(id: number) {
     if (!confirm('¿Enviar la base a la papelera?')) return;
     await deleteBase(id);
-    // si estamos en última página y queda vacía, retrocede una
     if (items.length === 1 && pager.page > 1) {
       goto(pager.page - 1);
     } else {
@@ -114,7 +107,7 @@ export default function BasesList() {
 
       <div className="content">
         <div className="list-toolbar">
-          <h2 className="title" style={{ margin: 0 }}>Mis bases</h2>
+          <h2 className="section-title m-0">Mis bases</h2>
           <div className="toolbar-right">
             <input
               className="input search"
@@ -122,7 +115,6 @@ export default function BasesList() {
               value={q}
               onChange={(e) => {
                 setQ(e.target.value);
-                // al buscar, vuelve a página 1
                 setPager(p => ({ ...p, page: 1 }));
               }}
             />
@@ -137,7 +129,7 @@ export default function BasesList() {
               <option value={48}>48</option>
             </select>
             {canManage && (
-              <button className="btn primary" onClick={() => setOpenCreate(true)}>
+              <button className="btn-primary" onClick={() => setOpenCreate(true)}>
                 Nueva base
               </button>
             )}
@@ -180,7 +172,6 @@ export default function BasesList() {
           )}
         </div>
 
-        {/* paginación */}
         <div className="pagination">
           <button className="btn" disabled={!hasPrev} onClick={() => goto(pager.page - 1)}>« Anterior</button>
           <span className="muted">
@@ -191,27 +182,24 @@ export default function BasesList() {
         </div>
       </div>
 
-      {/* Modal crear (elegir workspace dentro) */}
       {canManage && (
         <CreateBaseAnywhereModal
           open={openCreate}
           onClose={() => setOpenCreate(false)}
           onCreated={() => {
             setOpenCreate(false);
-            // refresco en página 1 para ver la nueva
             setPager(p => ({ ...p, page: 1 }));
             load();
           }}
         />
       )}
 
-      {/* Modal renombrar */}
       {openRename.open && (
         <div className="modal-overlay" onClick={() => setOpenRename({ open: false })}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 style={{ margin: 0 }}>Renombrar base</h3>
-              <button className="icon-btn" onClick={() => setOpenRename({ open: false })}>✕</button>
+              <h3 className="m-0 font-bold">Renombrar base</h3>
+              <button className="modal-close" onClick={() => setOpenRename({ open: false })}>✕</button>
             </div>
             <div className="modal-body">
               <input
@@ -221,11 +209,11 @@ export default function BasesList() {
                 placeholder="Nuevo nombre"
                 autoFocus
               />
-              {renameErr && <div className="alert error" style={{ marginTop: 8 }}>{renameErr}</div>}
+              {renameErr && <div className="alert-error mt-2">{renameErr}</div>}
             </div>
             <div className="modal-footer">
               <button className="btn" onClick={() => setOpenRename({ open: false })}>Cancelar</button>
-              <button className="btn primary" onClick={submitRename}>Guardar</button>
+              <button className="btn-primary" onClick={submitRename}>Guardar</button>
             </div>
           </div>
         </div>

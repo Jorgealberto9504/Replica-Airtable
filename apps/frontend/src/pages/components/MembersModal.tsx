@@ -1,4 +1,7 @@
 // apps/frontend/src/pages/components/MembersModal.tsx
+// -----------------------------------------------------------------------------
+// Modal de miembros (sin estilos inline).
+// -----------------------------------------------------------------------------
 import { useEffect, useState } from 'react';
 import {
   listMembers,
@@ -22,7 +25,6 @@ export default function MembersModal({ baseId, open, onClose }: Props) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // invitación
   const [email, setEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<MembershipRole>('EDITOR');
   const [inviting, setInviting] = useState(false);
@@ -62,9 +64,7 @@ export default function MembersModal({ baseId, open, onClose }: Props) {
     setErr(null);
     try {
       await updateMemberRole(baseId, memberId, role);
-      setItems(cur =>
-        cur.map(m => (m.id === memberId ? { ...m, role } as MemberRow : m))
-      );
+      setItems(cur => cur.map(m => (m.id === memberId ? { ...m, role } : m)));
     } catch (e: any) {
       setErr(e?.message ?? 'No se pudo cambiar el rol');
     }
@@ -86,61 +86,63 @@ export default function MembersModal({ baseId, open, onClose }: Props) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h3 style={{ margin: 0 }}>Miembros</h3>
-          <button className="icon-btn" onClick={onClose}>✕</button>
+          <h3 className="m-0">Miembros</h3>
+          <button className="modal-close" onClick={onClose}>✕</button>
         </div>
 
-        {err && <div className="alert error" style={{ marginBottom: 12 }}>{err}</div>}
+        <div className="modal-body">
+          {err && <div className="alert-error mb-3">{err}</div>}
 
-        {/* Invitar */}
-        <div className="invite-row">
-          <input
-            type="email"
-            placeholder="correo@ejemplo.com"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            className="input"
-          />
-          <select
-            className="select"
-            value={inviteRole}
-            onChange={e => setInviteRole(e.target.value as MembershipRole)}
-          >
-            {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
-          <button className="btn primary" onClick={handleInvite} disabled={inviting || !email}>
-            {inviting ? 'Invitando…' : 'Invitar'}
-          </button>
+          <div className="invite-row">
+            <input
+              className="input"
+              type="email"
+              placeholder="correo@ejemplo.com"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+            />
+            <select
+              className="select"
+              value={inviteRole}
+              onChange={e => setInviteRole(e.target.value as MembershipRole)}
+            >
+              {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+            <button className="btn-primary" onClick={handleInvite} disabled={inviting || !email}>
+              {inviting ? 'Invitando…' : 'Invitar'}
+            </button>
+          </div>
+
+          <div className="members-list">
+            {loading ? (
+              <div className="muted">Cargando…</div>
+            ) : items.length === 0 ? (
+              <div className="muted">No hay miembros</div>
+            ) : (
+              items.map(m => (
+                <div key={m.id} className="member-row has-actions">
+                  <div className="member-user">
+                    <div className="member-name">{m.user.fullName}</div>
+                    <div className="member-email">{m.user.email}</div>
+                  </div>
+                  <div className="member-actions">
+                    <select
+                      className="select"
+                      value={m.role}
+                      onChange={e => handleChangeRole(m.id, e.target.value as MembershipRole)}
+                    >
+                      {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                    <button className="btn-danger" onClick={() => handleRemove(m.id)}>Quitar</button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
 
-        {/* Lista de miembros */}
-        <div className="members-list">
-          {loading ? (
-            <div style={{ color: '#6b7280' }}>Cargando…</div>
-          ) : items.length === 0 ? (
-            <div style={{ color: '#9ca3af' }}>No hay miembros</div>
-          ) : (
-            items.map(m => (
-              <div key={m.id} className="member-row">
-                <div className="member-user">
-                  <div className="member-name">{m.user.fullName}</div>
-                  <div className="member-email">{m.user.email}</div>
-                </div>
-                <div className="member-actions">
-                  <select
-                    className="select"
-                    value={m.role}
-                    onChange={e => handleChangeRole(m.id, e.target.value as MembershipRole)}
-                  >
-                    {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-                  </select>
-                  <button className="btn danger" onClick={() => handleRemove(m.id)}>
-                    Quitar
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
+        <div className="modal-footer">
+          <button className="btn" onClick={onClose}>Cerrar</button>
         </div>
       </div>
     </div>

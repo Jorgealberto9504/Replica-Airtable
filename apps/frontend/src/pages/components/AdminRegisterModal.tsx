@@ -6,14 +6,12 @@ import { adminRegisterUser } from '../../api/auth';
 type Props = {
   open: boolean;
   onClose: () => void;
-  onCreated?: () => void; // callback para refrescar lista en el futuro
+  onCreated?: () => void;
 };
 
 function isEmailBasic(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
-
-// validación rápida (el backend también valida con reglas fuertes)
 function looksStrong(pwd: string) {
   return (
     pwd.length >= 8 &&
@@ -29,8 +27,6 @@ export default function AdminRegisterModal({ open, onClose, onCreated }: Props) 
   const [fullName, setFullName] = useState('');
   const [tempPassword, setTempPassword] = useState('');
   const [platformRole, setPlatformRole] = useState<'USER' | 'SYSADMIN'>('USER');
-
-  // NUEVO: permiso global “creador de bases”
   const [canCreateBases, setCanCreateBases] = useState(false);
 
   const [err, setErr] = useState<string | null>(null);
@@ -62,18 +58,16 @@ export default function AdminRegisterModal({ open, onClose, onCreated }: Props) 
         fullName,
         tempPassword,
         platformRole,
-        canCreateBases, // <- SE ENVÍA AL BACKEND
+        canCreateBases,
       });
 
       if (resp.ok) {
-        setOkMsg('Usuario registrado correctamente'); // <- mantiene mensaje verde
-        // Limpia el formulario pero NO borres okMsg para que se vea el aviso
+        setOkMsg('Usuario registrado correctamente');
         setEmail('');
         setFullName('');
         setTempPassword('');
         setPlatformRole('USER');
         setCanCreateBases(false);
-
         onCreated?.();
       } else {
         setErr('No se pudo registrar');
@@ -88,17 +82,8 @@ export default function AdminRegisterModal({ open, onClose, onCreated }: Props) 
   return (
     <Modal open={open} onClose={onClose} title="Registro de usuario">
       <form onSubmit={handleSubmit} className="form">
-        {err && <div className="alert error">{err}</div>}
-
-        {/* Mensaje verde de éxito (se conserva tras limpiar inputs) */}
-        {okMsg && (
-          <div
-            className="alert"
-            style={{ background: '#e6f4ff', border: '1px solid #bfdbfe', color: '#1d4ed8' }}
-          >
-            {okMsg}
-          </div>
-        )}
+        {err && <div className="alert-error">{err}</div>}
+        {okMsg && <div className="alert-info">{okMsg}</div>}
 
         <label className="label">Nombre completo</label>
         <input
@@ -139,8 +124,7 @@ export default function AdminRegisterModal({ open, onClose, onCreated }: Props) 
           <option value="SYSADMIN">SYSADMIN</option>
         </select>
 
-        {/* Checkbox “Creador de bases” */}
-        <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <label className="label inline-flex items-center gap-2">
           <input
             type="checkbox"
             checked={canCreateBases}
@@ -149,11 +133,11 @@ export default function AdminRegisterModal({ open, onClose, onCreated }: Props) 
           Creador de bases (permiso global)
         </label>
 
-        <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
+        <div className="mt-2 flex gap-2 justify-end">
           <button type="button" className="btn" onClick={onClose}>
             Cancelar
           </button>
-          <button className="btn primary" disabled={loading}>
+          <button className="btn-primary" disabled={loading}>
             {loading ? 'Guardando…' : 'Registrar'}
           </button>
         </div>

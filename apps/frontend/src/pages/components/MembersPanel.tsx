@@ -1,9 +1,6 @@
+// apps/frontend/src/pages/components/MembersPanel.tsx
 // -----------------------------------------------------------------------------
-// Panel de Miembros (lado derecho en BaseView)
-// - Lista miembros
-// - Invita (email + rol)
-// - Cambia rol
-// - Quita miembro
+// Panel de miembros (lado derecho). Sin estilos inline.
 // -----------------------------------------------------------------------------
 import { useEffect, useState } from 'react';
 import {
@@ -17,7 +14,7 @@ import {
 
 type Props = {
   baseId: number;
-  canManage: boolean; // el backend ya valida, esto es solo para UI
+  canManage: boolean;
 };
 
 const ROLES: MembershipRole[] = ['VIEWER', 'COMMENTER', 'EDITOR'];
@@ -27,9 +24,8 @@ export default function MembersPanel({ baseId, canManage }: Props) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  // Invitación
   const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState<MembershipRole>('EDITOR'); // default
+  const [inviteRole, setInviteRole] = useState<MembershipRole>('EDITOR');
 
   async function load() {
     setErr(null);
@@ -43,11 +39,7 @@ export default function MembersPanel({ baseId, canManage }: Props) {
       setLoading(false);
     }
   }
-
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseId]);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [baseId]);
 
   async function handleInvite() {
     setErr(null);
@@ -64,8 +56,7 @@ export default function MembersPanel({ baseId, canManage }: Props) {
     setErr(null);
     try {
       await updateMemberRole(baseId, memberId, role);
-      // refresco liviano: actualizo en memoria
-      setItems((xs) => xs.map((m) => (m.id === memberId ? { ...m, role } : m)));
+      setItems(xs => xs.map(m => (m.id === memberId ? { ...m, role } : m)));
     } catch (e: any) {
       setErr(e?.message ?? 'No se pudo cambiar el rol');
     }
@@ -75,106 +66,63 @@ export default function MembersPanel({ baseId, canManage }: Props) {
     setErr(null);
     try {
       await removeMember(baseId, memberId);
-      setItems((xs) => xs.filter((m) => m.id !== memberId));
+      setItems(xs => xs.filter(m => m.id !== memberId));
     } catch (e: any) {
       setErr(e?.message ?? 'No se pudo quitar al miembro');
     }
   }
 
   return (
-    <section className="card" style={{ width: 420, padding: 16 }}>
-      <h3 style={{ marginBottom: 12 }}>Miembros</h3>
+    <section className="card members-panel">
+      <h3 className="section-title m-0 mb-3">Miembros</h3>
 
-      {err && (
-        <div className="alert error" style={{ marginBottom: 12 }}>
-          {err}
-        </div>
-      )}
+      {err && <div className="alert-error mb-3">{err}</div>}
 
-      {/* Invitar */}
       {canManage && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <div className="invite-row">
           <input
-            className="input"
+            className="input flex-1"
             placeholder="correo@ejemplo.com"
             value={inviteEmail}
             onChange={(e) => setInviteEmail(e.target.value)}
-            style={{ flex: 1 }}
           />
           <select
-            className="input"
+            className="select"
             value={inviteRole}
             onChange={(e) => setInviteRole(e.target.value as MembershipRole)}
           >
-            {ROLES.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
+            {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
-          <button className="btn primary" onClick={handleInvite}>
-            Invitar
-          </button>
+          <button className="btn-primary" onClick={handleInvite}>Invitar</button>
         </div>
       )}
 
-      {/* Lista */}
       {loading ? (
-        <div style={{ color: '#6b7280' }}>Cargando…</div>
+        <div className="muted">Cargando…</div>
       ) : items.length === 0 ? (
-        <div style={{ color: '#9ca3af' }}>No hay miembros</div>
+        <div className="muted">No hay miembros</div>
       ) : (
-        <div style={{ display: 'grid', gap: 10 }}>
-          {items.map((m) => (
-            <div
-              key={m.id} // <-- key único, evita el warning de React
-              style={{
-                display: 'grid',
-                gridTemplateColumns: canManage ? '1fr auto auto' : '1fr',
-                gap: 8,
-                alignItems: 'center',
-                padding: 8,
-                border: '1px solid #e5e7eb',
-                borderRadius: 10,
-              }}
-            >
-              <div>
-                <div style={{ fontWeight: 600 }}>{m.user.fullName}</div>
-                <div style={{ fontSize: 12, color: '#6b7280' }}>{m.user.email}</div>
+        <div className="members-list">
+          {items.map(m => (
+            <div key={m.id} className={`member-row${canManage ? ' has-actions' : ''}`}>
+              <div className="member-user">
+                <div className="member-name">{m.user.fullName}</div>
+                <div className="member-email">{m.user.email}</div>
               </div>
 
-              {/* Rol */}
               {canManage ? (
-                <select
-                  className="input"
-                  value={m.role}
-                  onChange={(e) => handleChangeRole(m.id, e.target.value as MembershipRole)}
-                >
-                  {ROLES.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
+                <>
+                  <select
+                    className="select"
+                    value={m.role}
+                    onChange={e => handleChangeRole(m.id, e.target.value as MembershipRole)}
+                  >
+                    {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                  <button className="btn" onClick={() => handleRemove(m.id)}>Quitar</button>
+                </>
               ) : (
-                <div
-                  style={{
-                    padding: '4px 8px',
-                    borderRadius: 999,
-                    background: '#f3f4f6',
-                    fontSize: 12,
-                    justifySelf: 'start',
-                  }}
-                >
-                  {m.role}
-                </div>
-              )}
-
-              {/* Quitar */}
-              {canManage && (
-                <button className="btn" onClick={() => handleRemove(m.id)}>
-                  Quitar
-                </button>
+                <span className="role-chip">{m.role}</span>
               )}
             </div>
           ))}

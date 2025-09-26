@@ -1,3 +1,7 @@
+// apps/frontend/src/pages/components/UsersEditModal.tsx
+// -----------------------------------------------------------------------------
+// Modal de edición de usuario (sin estilos inline)
+// -----------------------------------------------------------------------------
 import { useEffect, useState } from 'react';
 import { getUserAdmin, updateUserAdmin, resetUserPasswordAdmin } from '../../api/users';
 import type { AdminUser } from '../../api/users';
@@ -40,6 +44,7 @@ export default function UsersEditModal({ open, userId, onClose, onSaved }: Props
         mustChangePassword: u.mustChangePassword,
       });
       onSaved();
+      onClose();
     } finally {
       setLoading(false);
     }
@@ -54,41 +59,29 @@ export default function UsersEditModal({ open, userId, onClose, onSaved }: Props
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'rgba(0,0,0,.35)',
-      }}
-      onClick={onClose}
-    >
-      <div
-        className="card"
-        style={{ width: 700, maxWidth: '92vw' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="list-toolbar" style={{ marginTop: 0 }}>
-          <h3 style={{ margin: 0 }}>Editar usuario</h3>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 className="m-0">Editar usuario</h3>
+          <button className="modal-close" onClick={onClose}>✕</button>
         </div>
 
         {loading || !u ? (
-          <div>Cargando…</div>
+          <div className="modal-body">Cargando…</div>
         ) : (
           <>
-            <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 1fr' }}>
-              <label style={{ display: 'grid', gap: 6 }}>
+            <div className="modal-body grid gap-3 md:grid-cols-2">
+              <label className="field">
                 <span className="muted">Nombre completo</span>
                 <input className="input" value={u.fullName || ''} onChange={e => setU({ ...u, fullName: e.target.value })} />
               </label>
 
-              <label style={{ display: 'grid', gap: 6 }}>
+              <label className="field">
                 <span className="muted">Email (no editable)</span>
                 <input className="input" value={u.email} disabled />
               </label>
 
-              <label style={{ display: 'grid', gap: 6 }}>
+              <label className="field">
                 <span className="muted">Rol de plataforma</span>
                 <select
                   className="select"
@@ -100,7 +93,7 @@ export default function UsersEditModal({ open, userId, onClose, onSaved }: Props
                 </select>
               </label>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div className="flex items-center gap-4">
                 <label className="checkbox">
                   <input
                     type="checkbox"
@@ -127,10 +120,10 @@ export default function UsersEditModal({ open, userId, onClose, onSaved }: Props
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
+            <div className="modal-footer justify-end">
               <button className="btn" onClick={onClose}>Cancelar</button>
-              <button className="btn danger" onClick={resetPwd}>Resetear contraseña…</button>
-              <button className="btn primary" onClick={save}>Guardar</button>
+              <button className="btn-danger" onClick={resetPwd}>Resetear contraseña…</button>
+              <button className="btn-primary" onClick={save} disabled={loading}>Guardar</button>
             </div>
           </>
         )}

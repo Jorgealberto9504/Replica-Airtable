@@ -1,3 +1,7 @@
+// apps/frontend/src/pages/components/CreateBaseAnywhereModal.tsx
+// -----------------------------------------------------------------------------
+// Crear base en cualquier workspace. Sin estilos inline.
+// -----------------------------------------------------------------------------
 import { useEffect, useState } from 'react';
 import { listMyWorkspaces, createBaseInWorkspace } from '../../api/workspaces';
 
@@ -52,13 +56,15 @@ export default function CreateBaseAnywhereModal({ open, onClose, onCreated }: Pr
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h3 style={{ margin: 0 }}>Nueva base</h3>
-          <button className="icon-btn" onClick={onClose}>✕</button>
+          <h3 className="m-0">Nueva base</h3>
+          <button className="modal-close" onClick={onClose}>✕</button>
         </div>
-        <div className="modal-body">
+
+        <div className="modal-body grid gap-3">
           <label className="field">
             <span>Workspace</span>
             <select
+              className="select"
               value={wsId ?? ''}
               onChange={e => setWsId(Number(e.target.value) || null)}
             >
@@ -71,6 +77,7 @@ export default function CreateBaseAnywhereModal({ open, onClose, onCreated }: Pr
           <label className="field">
             <span>Nombre</span>
             <input
+              className="input"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="CRM, Inventario, Proyectos…"
@@ -80,6 +87,7 @@ export default function CreateBaseAnywhereModal({ open, onClose, onCreated }: Pr
           <label className="field">
             <span>Visibilidad</span>
             <select
+              className="select"
               value={visibility}
               onChange={(e) => setVisibility(e.target.value as 'PUBLIC' | 'PRIVATE')}
             >
@@ -88,13 +96,10 @@ export default function CreateBaseAnywhereModal({ open, onClose, onCreated }: Pr
             </select>
           </label>
         </div>
+
         <div className="modal-footer">
           <button className="btn" onClick={onClose}>Cancelar</button>
-          <button
-            className="btn primary"
-            disabled={submitting || !name.trim() || !wsId}
-            onClick={submit}
-          >
+          <button className="btn-primary" disabled={submitting || !name.trim() || !wsId} onClick={submit}>
             {submitting ? 'Creando…' : 'Crear'}
           </button>
         </div>

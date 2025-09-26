@@ -1,10 +1,11 @@
+// apps/frontend/src/pages/UsersAdminDetail.tsx
 import { useEffect, useState } from 'react';
 import Header from '../components/Header';
 import { useAuth } from '../auth/AuthContext';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getUserAdmin, updateUserAdmin, resetUserPasswordAdmin } from '../api/users';
 import type { AdminUser } from '../api/users';
-import { confirmToast } from '../ui/confirmToast'; // 🆕 toast bonito
+import { confirmToast } from '../ui/confirmToast';
 
 export default function UsersAdminDetail() {
   const { id } = useParams();
@@ -38,7 +39,6 @@ export default function UsersAdminDetail() {
     });
     setU(r.user);
 
-    // 🆕 reemplaza alert
     await confirmToast({
       title: 'Usuario actualizado',
       body: <>Los cambios se guardaron correctamente.</>,
@@ -50,9 +50,8 @@ export default function UsersAdminDetail() {
 
   async function resetPwd() {
     if (!u) return;
-    await resetUserPasswordAdmin(u.id); // "Aa12345!" por defecto
+    await resetUserPasswordAdmin(u.id);
 
-    // 🆕 reemplaza alert
     await confirmToast({
       title: 'Contraseña restablecida',
       body: <>Se generó la contraseña temporal <b>Aa12345!</b>. Se pedirá cambiarla al iniciar sesión.</>,
@@ -77,8 +76,8 @@ export default function UsersAdminDetail() {
     <>
       <Header user={me ?? undefined} onLogout={logout} />
       <main className="content">
-        <div className="list-toolbar" style={{ marginTop: 20 }}>
-          <h2 style={{ margin: 0 }}>Detalle de usuario</h2>
+        <div className="list-toolbar mt-5">
+          <h2 className="section-title m-0">Detalle de usuario</h2>
         </div>
 
         {loading ? (
@@ -87,18 +86,18 @@ export default function UsersAdminDetail() {
           <div className="card">Usuario no encontrado.</div>
         ) : (
           <div className="card">
-            <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 1fr' }}>
-              <label style={{ display: 'grid', gap: 6 }}>
+            <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
+              <label className="grid gap-1.5">
                 <span className="muted">Nombre completo</span>
                 <input className="input" value={u.fullName || ''} onChange={e => setU({ ...u, fullName: e.target.value })} />
               </label>
 
-              <label style={{ display: 'grid', gap: 6 }}>
+              <label className="grid gap-1.5">
                 <span className="muted">Email (no editable)</span>
                 <input className="input" value={u.email} disabled />
               </label>
 
-              <label style={{ display: 'grid', gap: 6 }}>
+              <label className="grid gap-1.5">
                 <span className="muted">Rol de plataforma</span>
                 <select
                   className="select"
@@ -110,7 +109,7 @@ export default function UsersAdminDetail() {
                 </select>
               </label>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16, paddingTop: 26 }}>
+              <div className="flex items-center gap-4 pt-6">
                 <label className="checkbox">
                   <input
                     type="checkbox"
@@ -129,10 +128,10 @@ export default function UsersAdminDetail() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+            <div className="flex gap-2 mt-4">
               <button className="btn" onClick={() => nav('/admin/users')}>Volver</button>
-              <button className="btn primary" onClick={save}>Guardar</button>
-              <button className="btn danger" onClick={resetPwd}>Resetear contraseña…</button>
+              <button className="btn-primary" onClick={save}>Guardar</button>
+              <button className="btn-danger" onClick={resetPwd}>Resetear contraseña…</button>
             </div>
           </div>
         )}

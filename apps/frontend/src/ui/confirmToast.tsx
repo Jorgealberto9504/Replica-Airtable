@@ -1,3 +1,10 @@
+// apps/frontend/src/ui/confirmToast.tsx
+// -----------------------------------------------------------------------------
+// confirmToast: mensaje de confirmación/alerta en forma de toast.
+// - Sin estilos inline; usa clases centralizadas del index.css
+// - Soporta variantes (neutral/success/info/warning/danger)
+// - Puede actuar como "alert" (solo botón Confirmar) con auto-cierre opcional
+// -----------------------------------------------------------------------------
 import React, { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -8,21 +15,21 @@ type Options = {
   body?: React.ReactNode;
   confirmText?: string;
   cancelText?: string;
-  danger?: boolean;        // mantiene compatibilidad: pinta el botón confirmar como .btn.danger
+  danger?: boolean;        // compat: pinta el botón confirmar como .btn.danger
   overlay?: boolean;       // true por defecto
 
-  // 🆕 extras para usarlo como "alert"
-  confirmOnly?: boolean;   // si true, NO muestra el botón Cancelar
+  // extras tipo "alert"
+  confirmOnly?: boolean;   // si true, NO muestra Cancelar
   variant?: Variant;       // acento de color (borde izquierdo)
-  autoCloseMs?: number;    // autocierre (ej. 3000). Solo si quieres
+  autoCloseMs?: number;    // autocierre (ej. 3000)
 };
 
-const VAR_COLORS: Record<Variant, string> = {
-  neutral: '#e5e7eb',
-  success: '#10b981',
-  info:    '#3b82f6',
-  warning: '#f59e0b',
-  danger:  '#ef4444',
+const VAR_CLASS: Record<Variant, string> = {
+  neutral: 'toast-accent-neutral',
+  success: 'toast-accent-success',
+  info:    'toast-accent-info',
+  warning: 'toast-accent-warning',
+  danger:  'toast-accent-danger',
 };
 
 /** Muestra un toast de confirmación/alerta y resuelve true/false */
@@ -55,64 +62,23 @@ export function confirmToast(opts: Options): Promise<boolean> {
           const t = setTimeout(() => close(true), opts.autoCloseMs);
           return () => clearTimeout(t);
         }
-      }, []);
+      }, [opts.autoCloseMs]);
 
-      const variant = opts.variant ?? (opts.danger ? 'danger' : 'neutral');
-      const accent  = VAR_COLORS[variant];
+      const variant: Variant = opts.variant ?? (opts.danger ? 'danger' : 'neutral');
+      const accentClass = VAR_CLASS[variant];
 
       return (
         <>
           {opts.overlay !== false && (
-            <div
-              onClick={() => close(false)}
-              style={{
-                position: 'fixed',
-                inset: 0,
-                background: 'rgba(0,0,0,0.35)',
-                zIndex: 5000,
-              }}
-            />
+            <div className="toast-overlay" onClick={() => close(false)} />
           )}
 
-          <div
-            style={{
-              position: 'fixed',
-              zIndex: 5010,
-              top: 24,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              width: 'calc(100% - 24px)',
-              maxWidth: 520,
-            }}
-          >
-            {/* Card MBQ */}
-            <div
-              className="card"
-              style={{
-                border: '1px solid var(--border, #e5e7eb)',
-                borderRadius: 12,
-                boxShadow:
-                  '0 10px 15px -3px rgba(0,0,0,.08), 0 4px 6px -2px rgba(0,0,0,.05)',
-                background: '#fff',
-                color: '#111827',
-                padding: 14
-              }}
-            >
-              {opts.title && (
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>{opts.title}</div>
-              )}
+          <div className="toast-wrap">
+            <div className={`toast-card ${accentClass}`}>
+              {opts.title && <div className="toast-title">{opts.title}</div>}
+              {opts.body && <div className="toast-body">{opts.body}</div>}
 
-              {opts.body && <div className="muted" style={{ opacity: 0.95 }}>{opts.body}</div>}
-
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                  gap: 8,
-                  marginTop: 12,
-                }}
-              >
-                {/* Oculto si confirmOnly === true */}
+              <div className="toast-actions">
                 {!opts.confirmOnly && (
                   <button className="btn" onClick={() => close(false)}>
                     {opts.cancelText ?? 'Cancelar'}

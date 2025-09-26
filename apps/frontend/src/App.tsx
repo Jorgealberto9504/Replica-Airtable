@@ -1,6 +1,5 @@
-// apps/frontend/src/App.tsx
 import AppRouter from './router';
-import './styles/global.css';
+import './index.css';
 
 export default function App() {
   return <AppRouter />;

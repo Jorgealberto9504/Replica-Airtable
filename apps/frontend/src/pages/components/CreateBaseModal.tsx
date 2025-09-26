@@ -1,6 +1,5 @@
-// -----------------------------------------------------------------------------
-// Modal simple para crear Base dentro de un Workspace (estilo unificado)
-// -----------------------------------------------------------------------------
+// apps/frontend/src/pages/components/CreateBaseModal.tsx
+// Modal para crear Base dentro de un Workspace (sin estilos inline fijos)
 import { useState } from 'react';
 import { createBaseInWorkspace } from '../../api/workspaces';
 
@@ -8,7 +7,7 @@ type Props = {
   open: boolean;
   workspaceId: number | null;
   onClose: () => void;
-  onCreated?: () => void; // refrescar grid
+  onCreated?: () => void;
 };
 
 export default function CreateBaseModal({ open, workspaceId, onClose, onCreated }: Props) {
@@ -36,17 +35,18 @@ export default function CreateBaseModal({ open, workspaceId, onClose, onCreated 
   }
 
   return (
-    <div className="modal-overlay">
+    <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h3 style={{ margin: 0 }}>Nueva base</h3>
-          <button className="icon-btn" onClick={onClose}>✕</button>
+          <h3 className="m-0 font-bold">Nueva base</h3>
+          <button className="modal-close" onClick={onClose}>✕</button>
         </div>
 
         <form onSubmit={handleSubmit} className="modal-body">
           <label className="field">
-            <span>Nombre</span>
+            <span className="label">Nombre</span>
             <input
+              className="input"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="CRM, Inventario, Proyectos…"
@@ -54,8 +54,9 @@ export default function CreateBaseModal({ open, workspaceId, onClose, onCreated 
           </label>
 
           <label className="field">
-            <span>Visibilidad</span>
+            <span className="label">Visibilidad</span>
             <select
+              className="select"
               value={visibility}
               onChange={(e) => setVisibility(e.target.value as 'PUBLIC' | 'PRIVATE')}
             >
@@ -71,7 +72,7 @@ export default function CreateBaseModal({ open, workspaceId, onClose, onCreated 
             type="button"
             onClick={handleSubmit as any}
             disabled={submitting || !name.trim() || !workspaceId}
-            className="btn primary"
+            className="btn-primary"
           >
             {submitting ? 'Creando…' : 'Crear'}
           </button>
