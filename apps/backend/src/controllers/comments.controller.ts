@@ -1,3 +1,4 @@
+// apps/backend/src/controllers/comments.controller.ts
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import {

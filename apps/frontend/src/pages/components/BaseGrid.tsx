@@ -301,7 +301,7 @@ export default function BaseGrid({
                       className="base-card-title"
                       onClick={(e) => { e.stopPropagation(); openBase(b.id); }}
                     >
-                      {b.name}
+                      {b.name + ' este es el nombre de la base'}
                     </button>
 
                     {showMenu && (
@@ -368,7 +368,7 @@ export default function BaseGrid({
                     className="menu-item"
                     onClick={() => setRenameOpen({ open: true, id: menuFor!, name: currentName })}
                   >
-                    Cambiar nombre
+                    Cambiar nombrrrrre
                   </button>
                   <button
                     className="menu-item"
@@ -427,7 +427,7 @@ export default function BaseGrid({
                   checked={privacyOpen.v === 'PRIVATE'}
                   onChange={() => setPrivacyOpen((s) => ({ ...s, v: 'PRIVATE' }))}
                 />
-                Privada
+                Privada123
               </label>
               <label className="inline-flex items-center gap-2 mt-2">
                 <input

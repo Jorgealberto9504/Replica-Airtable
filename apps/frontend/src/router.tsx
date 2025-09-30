@@ -5,7 +5,6 @@ import Dashboard from './pages/Dashboard';
 import RequireAuth from './auth/RequireAuth';
 import BaseView from './pages/BaseView';
 import ChangePassword from './pages/ChangePassword';
-import BasesList from './pages/BasesList';
 import TrashView from './pages/TrashView';
 
 // NUEVO: gestión de usuarios (solo SYSADMIN; la page valida el rol)
@@ -29,14 +28,7 @@ export default function AppRouter() {
         }
       />
 
-      <Route
-        path="/bases"
-        element={
-          <RequireAuth>
-            <BasesList />
-          </RequireAuth>
-        }
-      />
+   
 
       {/* Papelera */}
       <Route

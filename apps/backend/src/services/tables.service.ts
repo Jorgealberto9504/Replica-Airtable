@@ -1,14 +1,19 @@
 import { prisma, prismaDirect } from './db.js';
 import { Prisma } from '@prisma/client';
-import type { Prisma as P } from '@prisma/client';
+import type { Prisma as P, TableDef } from '@prisma/client';
+
+type TableDTO = Pick<
+  TableDef,
+  'id' | 'baseId' | 'name' | 'position' | 'createdAt' | 'updatedAt' | 'isTrashed' | 'trashedAt'
+>;
 
 /** Helper para detectar violación de unique (baseId, name, isTrashed=false) */
 export function isDuplicateTableNameError(e: unknown): boolean {
   return e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
 }
 
-// Mapear duplicados a HTTP 409
-function rethrowConflictIfDuplicateTable(e: unknown) {
+// Mapear duplicados a HTTP 409 (y tipar como `never` para que TS sepa que SIEMPRE lanza)
+function rethrowConflictIfDuplicateTable(e: unknown): never {
   if (isDuplicateTableNameError(e)) {
     const err: any = new Error('Unique constraint violation');
     err.status = 409;
@@ -20,13 +25,14 @@ function rethrowConflictIfDuplicateTable(e: unknown) {
     };
     throw err;
   }
-  throw e;
+  // No fue P2002 → relanzamos el original
+  throw e as any;
 }
 
 /* ======================================================
    Bloquear CRUD si la BASE está en papelera
    ====================================================== */
-async function ensureBaseActive(baseId: number) {
+async function ensureBaseActive(baseId: number): Promise<void> {
   const base = await prisma.base.findUnique({
     where: { id: baseId },
     select: { isTrashed: true },
@@ -99,7 +105,7 @@ export async function getGridMetaForTable(baseId: number, tableId: number) {
 /* ==========================================
    CRUD de tablas
    ========================================== */
-export async function createTable(baseId: number, name: string) {
+export async function createTable(baseId: number, name: string): Promise<TableDTO> {
   await ensureBaseActive(baseId);
   try {
     const position = await getNextPosition(baseId);
@@ -111,11 +117,11 @@ export async function createTable(baseId: number, name: string) {
       },
     });
   } catch (e) {
-    rethrowConflictIfDuplicateTable(e);
+    rethrowConflictIfDuplicateTable(e); // never
   }
 }
 
-export async function listTablesForBase(baseId: number) {
+export async function listTablesForBase(baseId: number): Promise<TableDTO[]> {
   await ensureBaseActive(baseId);
   return prisma.tableDef.findMany({
     where: { baseId, isTrashed: false },
@@ -137,19 +143,23 @@ export async function listTablesNavForBase(baseId: number) {
   });
 }
 
-export async function getTableById(baseId: number, tableId: number) {
+export async function getTableById(baseId: number, tableId: number): Promise<TableDTO | null> {
   await ensureBaseActive(baseId);
   const tbl = await prisma.tableDef.findUnique({
     where: { id: tableId },
     select: {
       id: true, baseId: true, name: true, position: true,
-      createdAt: true, updatedAt: true, isTrashed: true,
+      createdAt: true, updatedAt: true, isTrashed: true, trashedAt: true,
     },
   });
   return (tbl && tbl.baseId === baseId && !tbl.isTrashed) ? tbl : null;
 }
 
-export async function updateTable(baseId: number, tableId: number, patch: { name?: string }) {
+export async function updateTable(
+  baseId: number,
+  tableId: number,
+  patch: { name?: string }
+): Promise<TableDTO> {
   await ensureBaseActive(baseId);
   const existing = await prisma.tableDef.findUnique({
     where: { id: tableId },
@@ -157,7 +167,7 @@ export async function updateTable(baseId: number, tableId: number, patch: { name
   });
   if (!existing || existing.baseId !== baseId) {
     const err: any = new Error('Tabla no encontrada');
-    err.code = 'P2025';
+    (err as any).code = 'P2025';
     err.status = 404;
     throw err;
   }
@@ -177,7 +187,7 @@ export async function updateTable(baseId: number, tableId: number, patch: { name
       },
     });
   } catch (e) {
-    rethrowConflictIfDuplicateTable(e);
+    rethrowConflictIfDuplicateTable(e); // never
   }
 }
 
@@ -217,7 +227,7 @@ export async function reorderTables(baseId: number, orderedIds: number[]) {
 }
 
 /* SOFT DELETE */
-export async function deleteTable(baseId: number, tableId: number) {
+export async function deleteTable(baseId: number, tableId: number): Promise<void> {
   const base = await prisma.base.findUnique({
     where: { id: baseId },
     select: { isTrashed: true },
@@ -230,7 +240,7 @@ export async function deleteTable(baseId: number, tableId: number) {
     select: { id: true, baseId: true, isTrashed: true },
   });
   if (!existing || existing.baseId !== baseId) {
-    const err: any = new Error('Tabla no encontrada'); err.code = 'P2025'; err.status = 404; throw err;
+    const err: any = new Error('Tabla no encontrada'); (err as any).code = 'P2025'; err.status = 404; throw err;
   }
   if (existing.isTrashed) return;
 
@@ -243,7 +253,7 @@ export async function deleteTable(baseId: number, tableId: number) {
 /* ===========================
    Papelera (OWNER)
    =========================== */
-export async function listTrashedTablesForBase(baseId: number) {
+export async function listTrashedTablesForBase(baseId: number): Promise<TableDTO[]> {
   await ensureBaseActive(baseId);
   return prisma.tableDef.findMany({
     where: { baseId, isTrashed: true },
@@ -293,7 +303,7 @@ export async function listTrashedTablesForAdmin(params?: { ownerId?: number; bas
 }
 
 /** Restaurar una tabla específica desde papelera */
-export async function restoreTable(baseId: number, tableId: number) {
+export async function restoreTable(baseId: number, tableId: number): Promise<TableDTO> {
   const tbl = await prisma.tableDef.findUnique({
     where: { id: tableId },
     select: { id: true, baseId: true, isTrashed: true },
@@ -316,12 +326,12 @@ export async function restoreTable(baseId: number, tableId: number) {
       },
     });
   } catch (e) {
-    rethrowConflictIfDuplicateTable(e);
+    rethrowConflictIfDuplicateTable(e); // never
   }
 }
 
 /** Borrado definitivo de una tabla (solo si está en papelera) */
-export async function deleteTablePermanently(baseId: number, tableId: number) {
+export async function deleteTablePermanently(baseId: number, tableId: number): Promise<void> {
   const tbl = await prisma.tableDef.findUnique({
     where: { id: tableId },
     select: { id: true, baseId: true, isTrashed: true },
@@ -332,12 +342,12 @@ export async function deleteTablePermanently(baseId: number, tableId: number) {
 }
 
 /** Vaciar papelera de una base (borrado definitivo) */
-export async function emptyTrashForBase(baseId: number) {
+export async function emptyTrashForBase(baseId: number): Promise<void> {
   await prisma.tableDef.deleteMany({ where: { baseId, isTrashed: true } });
 }
 
 /** Purga automática (≥ N días) */
-export async function purgeTrashedTablesOlderThan(days: number = 30) {
+export async function purgeTrashedTablesOlderThan(days: number = 30): Promise<void> {
   const threshold = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   await prisma.tableDef.deleteMany({
     where: { isTrashed: true, trashedAt: { lte: threshold } },
@@ -370,21 +380,18 @@ export async function restoreAllTablesForBaseInTx(
   tx: P.TransactionClient,
   baseId: number
 ) {
-  // 1) posición inicial (continuar al final)
   const agg = await tx.tableDef.aggregate({
     where: { baseId, isTrashed: false },
     _max: { position: true },
   });
   let nextPos = (agg._max.position ?? 0) + 1;
 
-  // 2) tablas en papelera (orden estable)
   const trashed = await tx.tableDef.findMany({
     where: { baseId, isTrashed: true },
     select: { id: true, name: true },
     orderBy: [{ trashedAt: 'asc' }, { id: 'asc' }],
   });
 
-  // 3) restaurar con posición y rename si hay conflicto
   for (const t of trashed) {
     try {
       await tx.tableDef.update({
@@ -404,7 +411,6 @@ export async function restoreAllTablesForBaseInTx(
     }
   }
 
-  // 4) normalizar posiciones 1..N
   const final = await tx.tableDef.findMany({
     where: { baseId, isTrashed: false },
     select: { id: true },
@@ -417,7 +423,6 @@ export async function restoreAllTablesForBaseInTx(
   }
 }
 
-/** Versión no-transaccional (por si se necesita en un script aislado) */
 export async function restoreAllTablesForBase(baseId: number) {
   return prismaDirect.$transaction(async (tx) => {
     await restoreAllTablesForBaseInTx(tx, baseId);

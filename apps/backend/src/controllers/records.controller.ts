@@ -1,4 +1,5 @@
 // apps/backend/src/controllers/records.controller.ts
+
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import {
@@ -50,6 +51,7 @@ export async function listRecords(req: Request, res: Response, next: NextFunctio
       effectivePage,
       effectiveSize
     );
+    // records ahora puede incluir opcionalmente { lastChange }
     res.json({ ok: true, total, records });
   } catch (e) { next(e); }
 }

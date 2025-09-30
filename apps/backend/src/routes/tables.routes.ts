@@ -1,52 +1,59 @@
+// apps/backend/src/routes/tables.routes.ts
+
 import { Router } from 'express';
 import { requireAuth } from '../middlewares/auth.middleware.js';
 import { guard, guardGlobal } from '../permissions/guard.js';
 import {
+  // CRUD
   createTableCtrl,
   listTablesCtrl,
   getTableCtrl,
   updateTableCtrl,
   deleteTableCtrl,
-  // ===== PAPELERA =====
+  // NAV / REORDER
+  listTablesNavCtrl,
+  reorderTablesCtrl,
+  // META GRID
+  getTableMetaCtrl,
+  // PAPELERA (OWNER)
   listTrashedTablesCtrl,
   restoreTableCtrl,
   deleteTablePermanentCtrl,
   emptyTableTrashCtrl,
-  // ===== PAPELERA (ADMIN) =====
+  // PAPELERA (ADMIN / GLOBAL)
   listTrashedTablesAdminCtrl,
   listAllTrashedTablesAdminCtrl,
   restoreTableAdminCtrl,
   deleteTablePermanentAdminCtrl,
-  // ===== NAV / REORDER =====
-  listTablesNavCtrl,
-  reorderTablesCtrl,
-  // ===== META GRID =====
-  getTableMetaCtrl,
 } from '../controllers/tables.controller.js';
 
 const router = Router();
 
-// ===========================
-// PAPELERA DE TABLAS (ADMIN)  
-// ===========================
+/* ===========================
+   PAPELERA DE TABLAS (ADMIN)
+   Ruta final: /bases/admin/...
+   =========================== */
 router.get(
   '/admin/tables/trash',
   requireAuth,
   guardGlobal('platform:users:manage'),
   listAllTrashedTablesAdminCtrl
 );
+
 router.get(
   '/admin/:baseId/tables/trash',
   requireAuth,
   guardGlobal('platform:users:manage'),
   listTrashedTablesAdminCtrl
 );
+
 router.post(
   '/admin/:baseId/tables/:tableId/restore',
   requireAuth,
   guardGlobal('platform:users:manage'),
   restoreTableAdminCtrl
 );
+
 router.delete(
   '/admin/:baseId/tables/:tableId/permanent',
   requireAuth,
@@ -54,9 +61,10 @@ router.delete(
   deleteTablePermanentAdminCtrl
 );
 
-// ===========================
-// PAPELERA DE TABLAS (OWNER)
-// ===========================
+/* ===========================
+   PAPELERA DE TABLAS (OWNER)
+   Ruta final: /bases/:baseId/...
+   =========================== */
 router.get('/:baseId/tables/trash', requireAuth, guard('schema:manage'), listTrashedTablesCtrl);
 router.post('/:baseId/tables/:tableId/restore', requireAuth, guard('schema:manage'), restoreTableCtrl);
 router.delete('/:baseId/tables/:tableId/permanent', requireAuth, guard('schema:manage'), deleteTablePermanentCtrl);

@@ -1,26 +1,60 @@
+// apps/backend/src/services/records.service.ts
 import { prisma, prismaDirect } from './db.js';
 import { Prisma, FieldType } from '@prisma/client';
 import { badRequest, notFound } from '../utils/errors.js';
 
 /* ===================== LIST ===================== */
-
+/**
+ * Devuelve registros de una tabla:
+ * - records[].values: diccionario { fieldId: valor }
+ * - records[].lastChange (opcional):
+ *    - Si el último evento fue en una celda:
+ *      { kind: 'CELL', fieldId, fieldName, user: {id, fullName} | null, at: ISO }
+ *    - Si el último evento fue un comentario:
+ *      { kind: 'COMMENT', commentId, body, user: {id, fullName} | null, at: ISO }
+ */
 export async function listRecordsSvc(
   _baseId: number,
   tableId: number,
   page: number,
   pageSize: number
 ) {
-  // Tipos de campos para interpretar valores
+  // Tipos y nombres de campos para interpretar valores y armar lastChange
   const fields = await prisma.field.findMany({
     where: { tableId, isTrashed: false },
-    select: { id: true, type: true },
+    select: { id: true, type: true, name: true },
   });
-  const typeById = new Map(fields.map(f => [f.id, f.type]));
+  const typeById = new Map(fields.map((f) => [f.id, f.type]));
+  const nameById = new Map(fields.map((f) => [f.id, f.name]));
 
   const [rows, total] = await Promise.all([
     prisma.recordRow.findMany({
       where: { tableId, isTrashed: false },
-      include: { cells: { include: { options: true } } }, // MULTI_SELECT
+      include: {
+        cells: {
+          include: {
+            // Para MULTI_SELECT
+            options: true,
+            // Para "Último cambio" (nombre de campo / usuario)
+            field: { select: { id: true, name: true } },
+            updatedBy: { select: { id: true, fullName: true } },
+          },
+        },
+        // Traer el último comentario (no-trashed) por fila para lastChange
+        comments: {
+          where: { isTrashed: false },
+          orderBy: { updatedAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            body: true,
+            createdAt: true,
+            updatedAt: true,
+            createdBy: { select: { id: true, fullName: true} },
+            updatedBy: { select: { id: true, fullName: true} },
+          },
+        },
+      },
       orderBy: { id: 'asc' },
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -28,21 +62,22 @@ export async function listRecordsSvc(
     prisma.recordRow.count({ where: { tableId, isTrashed: false } }),
   ]);
 
-  const fieldIds = fields.map(f => f.id);
+  const fieldIds = fields.map((f) => f.id);
 
   const records = rows.map((r) => {
     const values: Record<string, any> = {};
 
+    // Construye valores por celda según tipo
     for (const c of r.cells) {
       const t = typeById.get(c.fieldId);
       let v: any = null;
 
       if (t === 'MULTI_SELECT') {
-        v = c.options.map(o => o.optionId);      // array de optionIds
+        v = c.options.map((o) => o.optionId); // array de optionIds
       } else if (t === 'SINGLE_SELECT') {
-        v = c.selectOptionId ?? null;            // optionId o null
+        v = c.selectOptionId ?? null; // optionId o null
       } else if (t === 'TIME') {
-        v = c.timeMinutes ?? null;               // minutos 0..1439
+        v = c.timeMinutes ?? null; // minutos 0..1439
       } else {
         v =
           c.stringValue ??
@@ -56,9 +91,50 @@ export async function listRecordsSvc(
       values[String(c.fieldId)] = v;
     }
 
+    // Completar nulls para campos que no tienen celda
     for (const fid of fieldIds) if (!(fid in values)) values[String(fid)] = null;
 
-    return { id: r.id, values };
+    // === Último cambio: comparamos "última celda actualizada" vs "último comentario" ===
+    let latestCell: (typeof r.cells)[number] | null = null;
+    for (const c of r.cells) {
+      if (!latestCell || c.updatedAt > latestCell.updatedAt) latestCell = c;
+    }
+    const latestComment = r.comments[0] ?? null;
+
+    const cellAt = latestCell?.updatedAt ?? null;
+    const commentAt = latestComment
+      ? (latestComment.updatedAt ?? latestComment.createdAt)
+      : null;
+
+    let lastChange: any = null;
+
+    if (commentAt && (!cellAt || commentAt > cellAt)) {
+      // Gana el comentario
+      lastChange = {
+        kind: 'COMMENT' as const,
+        commentId: latestComment!.id,
+        body: latestComment!.body,
+        user:
+          latestComment!.updatedBy ??
+          latestComment!.createdBy ??
+          null,
+        at: (latestComment!.updatedAt ?? latestComment!.createdAt).toISOString(),
+      };
+    } else if (cellAt) {
+      // Gana la celda
+      lastChange = {
+        kind: 'CELL' as const,
+        fieldId: latestCell!.fieldId ?? null,
+        fieldName:
+          latestCell!.field?.name ??
+          nameById.get(latestCell!.fieldId) ??
+          null,
+        user: latestCell!.updatedBy ?? null,
+        at: latestCell!.updatedAt.toISOString(),
+      };
+    }
+
+    return { id: r.id, values, ...(lastChange ? { lastChange } : {}) };
   });
 
   return { total, records };
@@ -148,7 +224,8 @@ function coerceValue(type: FieldType, raw: any) {
 
     case 'NUMBER':
     case 'CURRENCY': {
-      const num = typeof raw === 'number' ? raw : Number(String(raw).replace(',', '.'));
+      const num =
+        typeof raw === 'number' ? raw : Number(String(raw).replace(',', '.'));
       if (Number.isNaN(num)) throw badRequest('El valor debe ser numérico.');
       return new Prisma.Decimal(num);
     }
@@ -177,7 +254,8 @@ function coerceValue(type: FieldType, raw: any) {
     case 'TIME': {
       if (typeof raw === 'number') {
         const n = Math.trunc(raw);
-        if (n < 0 || n > 1439) throw badRequest('TIME inválido (minutos 0..1439).');
+        if (n < 0 || n > 1439)
+          throw badRequest('TIME inválido (minutos 0..1439).');
         return n;
       }
       const s = String(raw).trim();
@@ -185,7 +263,8 @@ function coerceValue(type: FieldType, raw: any) {
       if (!m) throw badRequest('TIME inválido. Usa "HH:mm" o minutos.');
       const hh = Number(m[1]);
       const mm = Number(m[2]);
-      if (hh < 0 || hh > 23 || mm < 0 || mm > 59) throw badRequest('TIME inválido.');
+      if (hh < 0 || hh > 23 || mm < 0 || mm > 59)
+        throw badRequest('TIME inválido.');
       return hh * 60 + mm;
     }
   }
@@ -237,7 +316,9 @@ async function patchCellsTx(
       }
       const optId = Number(raw);
       if (!Number.isFinite(optId)) {
-        throw badRequest(`SINGLE_SELECT: optionId inválido para campo ${f.id}`);
+        throw badRequest(
+          `SINGLE_SELECT: optionId inválido para campo ${f.id}`
+        );
       }
 
       const ok = await tx.selectOption.findFirst({
@@ -245,7 +326,9 @@ async function patchCellsTx(
         select: { id: true },
       });
       if (!ok) {
-        throw badRequest(`SINGLE_SELECT: optionId ${optId} no pertenece al campo ${f.id}`);
+        throw badRequest(
+          `SINGLE_SELECT: optionId ${optId} no pertenece al campo ${f.id}`
+        );
       }
 
       baseData.selectOptionId = optId;
@@ -257,8 +340,12 @@ async function patchCellsTx(
       // normalizamos a array de números
       let list: number[] = [];
       if (raw == null) list = [];
-      else if (Array.isArray(raw)) list = raw.map(n => Number(n)).filter(n => Number.isFinite(n));
-      else throw badRequest(`MULTI_SELECT espera arreglo de optionIds en campo ${f.id}`);
+      else if (Array.isArray(raw))
+        list = raw.map((n) => Number(n)).filter((n) => Number.isFinite(n));
+      else
+        throw badRequest(
+          `MULTI_SELECT espera arreglo de optionIds en campo ${f.id}`
+        );
 
       // validar pertenencia
       if (list.length) {
@@ -266,10 +353,14 @@ async function patchCellsTx(
           where: { id: { in: list }, fieldId: f.id, isTrashed: false },
           select: { id: true },
         });
-        const validSet = new Set(valid.map(v => v.id));
-        const invalid = list.filter(id => !validSet.has(id));
+        const validSet = new Set(valid.map((v) => v.id));
+        const invalid = list.filter((id) => !validSet.has(id));
         if (invalid.length) {
-          throw badRequest(`MULTI_SELECT: optionIds inválidos para campo ${f.id}: ${invalid.join(', ')}`);
+          throw badRequest(
+            `MULTI_SELECT: optionIds inválidos para campo ${f.id}: ${invalid.join(
+              ', '
+            )}`
+          );
         }
       }
 
@@ -281,14 +372,16 @@ async function patchCellsTx(
         select: { optionId: true },
         orderBy: { optionId: 'asc' },
       });
-      const currentSet = new Set(current.map(c => c.optionId));
+      const currentSet = new Set(current.map((c) => c.optionId));
       const desiredSet = new Set(list);
 
       // eliminar los que ya no están
       for (const { optionId } of current) {
         if (!desiredSet.has(optionId)) {
           await tx.recordCellOption.delete({
-            where: { recordCellId_optionId: { recordCellId: cell.id, optionId } },
+            where: {
+              recordCellId_optionId: { recordCellId: cell.id, optionId },
+            },
           });
         }
       }
@@ -311,7 +404,10 @@ async function patchCellsTx(
         break;
       case 'NUMBER':
       case 'CURRENCY':
-        baseData.numberValue = coerceValue(f.type, raw) as Prisma.Decimal | null;
+        baseData.numberValue = coerceValue(
+          f.type,
+          raw
+        ) as Prisma.Decimal | null;
         break;
       case 'CHECKBOX':
         baseData.boolValue = coerceValue(f.type, raw) as boolean | null;
@@ -361,7 +457,10 @@ export async function restoreRecordSvc(tableId: number, recordId: number) {
   });
   if (!row || row.tableId !== tableId) throw notFound('Registro no encontrado.');
   if (!row.isTrashed) throw badRequest('El registro no está en papelera.');
-  return prisma.recordRow.update({ where: { id: recordId }, data: { isTrashed: false, trashedAt: null } });
+  return prisma.recordRow.update({
+    where: { id: recordId },
+    data: { isTrashed: false, trashedAt: null },
+  });
 }
 
 export async function deleteRecordPermanentSvc(tableId: number, recordId: number) {
@@ -379,7 +478,7 @@ export async function emptyRecordTrashForTableSvc(tableId: number) {
 }
 
 export async function purgeTrashedRecordsOlderThanSvc(days = 30) {
-  const threshold = new Date(Date.now() - days * 86400_000);
+  const threshold = new Date(Date.now() - days * 86_400_000);
   await prisma.recordRow.deleteMany({
     where: { isTrashed: true, trashedAt: { lte: threshold } },
   });
