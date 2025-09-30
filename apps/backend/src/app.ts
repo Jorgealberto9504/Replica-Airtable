@@ -16,10 +16,11 @@ import fieldsRouter from './routes/fields.routes.js';
 import recordsRouter from './routes/records.routes.js';
 import { errorHandler } from './middlewares/error.middleware.js';
 
+import auditRoutes from './routes/audit.routes.js';
 
 const app = express();
 
-const FRONTEND = process.env.FRONTEND_ORIGIN
+const FRONTEND = process.env.FRONTEND_ORIGIN;
 app.use(
   cors({
     origin: FRONTEND,
@@ -47,6 +48,9 @@ app.use('/workspaces', workspacesRouter);
 //    Cada router interno usa `mergeParams: true`, por eso aquí montamos la ruta completa
 app.use('/bases/:baseId/tables/:tableId/fields', fieldsRouter);
 app.use('/bases/:baseId/tables/:tableId/records', recordsRouter);
+
+// 👇 Auditoría (consistente con el resto: sin /api)
+app.use('/', auditRoutes);
 
 app.use(errorHandler);
 export default app;

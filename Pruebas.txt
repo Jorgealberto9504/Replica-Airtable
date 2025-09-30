@@ -138,6 +138,10 @@ CREAR NUEVAMENTE LAS COLUMNAS SELECTSIMGLE Y MULTISELECT PARA PROBAR LOS RECORDS
 
 
 
+
+
+
+
 Records
 
 Listado de records paginado. GET
@@ -373,3 +377,130 @@ http://localhost:8080/bases/1/tables/1/records/3/comments/1/restore
 7. hacer login con usuario viewer y tratar de comentar
 
 8. hacer login con usuario commenter y crear comentario
+
+
+
+
+
+
+
+
+
+tarea 10.4<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+
+Traer el ultimo cambio o Lastchange para tu columna de ultima actividad en la fila con   GET
+http://localhost:8080/bases/1/tables/1/records
+
+
+
+{
+  "email": "admin@mbqinc.com",
+  "password": "Aa12345!"
+}
+
+TABLAS
+
+(Hacer esta parte desde el frontend)
+Crear una tabla nueva dentro de una base
+editar nombre de tabla dentro de la base
+eliminar tabla dentro de la base
+
+Revisar endpoint auditoria.  GET
+http://localhost:8080/bases/1/audit
+
+
+
+
+COLUMNAS
+
+
+
+Crear una columna nueva dentro de una tabla. POST
+http://localhost:8080/bases/1/tables/1/fields
+
+  { "name": "Apellido segundo", "type": "TEXT" }
+
+
+editar nombre de columna dentro de la tabla. PATCH
+http://localhost:8080/bases/1/tables/1/fields/11
+  { "name": "Apellido segundo33" }
+
+
+
+editar tipo de dato de columna. PATCH
+http://localhost:8080/bases/1/tables/1/fields/11
+  { "type": "NUMBER"}
+
+
+eliminar columna dentro de la tabla. DELETE
+http://localhost:8080/bases/1/tables/1/fields/11
+
+
+Revisar endpoint auditoria.  GET
+http://localhost:8080/bases/1/audit
+
+
+
+
+
+
+CELDAS
+
+Crear registros. POST
+http://localhost:8080/bases/1/tables/1/records
+
+{
+  "values": {
+    "1": "Juan Pérez",                 // TEXT
+    "2": "Cliente con seguimiento",    // LONG_TEXT
+    "3": 999.99,                       // CURRENCY
+    "4": true,                         // CHECKBOX
+    "5": "2025-10-12",                 // DATE (YYYY-MM-DD)
+    "6": "2025-10-12T15:30:00.000Z",   // DATETIME (ISO)
+    "7": "07:05",                      // TIME ("HH:mm") o 425
+    "8": 1,                           
+    "9": [5, 6]                      
+  }
+}
+
+actualizar registro PATCH
+http://localhost:8080/bases/1/tables/1/records/5
+{
+  "values": {
+    "1": "Juan Juarez (editado)",   // TEXT
+    "3": 1200.5,                   // CURRENCY
+    "7": "08:45"                   // TIME
+  }
+}
+
+eliminar fila DELETE
+http://localhost:8080/bases/1/tables/1/records/5
+
+
+Revisar endpoint auditoria .  GET
+http://localhost:8080/bases/1/audit
+
+
+
+
+Revisar endpoint auditoria sobre base que no le pertenece.  GET
+http://localhost:8080/bases/3/audit
+Puede ver porque es Admin
+
+
+
+
+
+
+hacer login con user creador
+
+{
+  "email": "creador@mbqinc.com",
+  "password": "Aa12345!"
+}
+
+Revisar endpoint auditoria sobre base que no le pertenece.  GET
+http://localhost:8080/bases/1/audit
+no puedes ver porque no es admin, solo puede auditar sus bases creadas
+

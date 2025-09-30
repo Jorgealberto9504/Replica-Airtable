@@ -1,15 +1,28 @@
+// apps/backend/src/services/db.ts
+// ============================================================================
+// PrismaClient (singleton en dev) con dos clientes:
+//  - prisma:        usa DATABASE_URL (pool/PgBouncer).
+//  - prismaDirect:  usa DIRECT_DATABASE_URL (sin pool). Úsalo p/ $transaction.
+// ============================================================================
+
 import { PrismaClient } from '@prisma/client';
 
-/**
- * Cliente normal (usa DATABASE_URL; suele ir por PgBouncer en modo "transaction").
- * Úsalo para lecturas/escrituras simples SIN transacción interactiva.
- */
-export const prisma = new PrismaClient();
+function makeClient(url?: string) {
+  return url ? new PrismaClient({ datasources: { db: { url } } }) : new PrismaClient();
+}
 
-/**
- * Cliente DIRECTO (usa DIRECT_DATABASE_URL; SIN PgBouncer).
- * Úsalo SIEMPRE que invoques prisma.$transaction(...) (callback o array).
- */
-const directUrl = process.env.DIRECT_DATABASE_URL;
-export const prismaDirect =
-  directUrl ? new PrismaClient({ datasources: { db: { url: directUrl } } }) : prisma;
+// Evita múltiples instancias en dev (que agotan el pool)
+const g = globalThis as unknown as {
+  __prisma?: PrismaClient;
+  __prismaDirect?: PrismaClient;
+};
+
+export const prisma = g.__prisma ?? makeClient(process.env.DATABASE_URL);
+
+const directUrl = process.env.DIRECT_DATABASE_URL || undefined;
+export const prismaDirect = g.__prismaDirect ?? (directUrl ? makeClient(directUrl) : prisma);
+
+if (process.env.NODE_ENV !== 'production') {
+  g.__prisma = prisma;
+  g.__prismaDirect = prismaDirect;
+}

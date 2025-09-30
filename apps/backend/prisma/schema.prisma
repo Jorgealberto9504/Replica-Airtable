@@ -1,3 +1,5 @@
+// apps/backend/prisma/schema.prisma
+
 // === Cliente de Prisma (genera tipos y métodos tipados) ===
 generator client {
   provider = "prisma-client-js"
@@ -10,11 +12,9 @@ datasource db {
   directUrl = env("DIRECT_DATABASE_URL") // usa la conexión directa en migraciones
 }
 
-/**
- * ============================================================
- * ENUMS
- * ============================================================
- */
+/* ============================================================
+   ENUMS
+   ============================================================ */
 
 enum PlatformRole {
   USER
@@ -40,16 +40,55 @@ enum FieldType {
   CHECKBOX
   DATE
   DATETIME
-  TIME // minutos desde medianoche
+  TIME          // minutos desde medianoche
   SINGLE_SELECT
   MULTI_SELECT
 }
 
-/**
- * ============================================================
- * MODELOS PRINCIPALES
- * ============================================================
- */
+/* === NEW: Acciones de auditoría ============================================
+   La app registrará un AuditEvent con una de estas acciones
+   ========================================================================== */
+enum AuditAction {
+  // Base
+  BASE_CREATED
+  BASE_RENAMED
+  BASE_VISIBILITY_CHANGED
+  BASE_TRASHED
+  BASE_RESTORED
+
+  // Tabla
+  TABLE_CREATED
+  TABLE_RENAMED
+  TABLE_TRASHED
+  TABLE_RESTORED
+  TABLE_REORDERED
+
+  // Campo
+  FIELD_CREATED
+  FIELD_UPDATED
+  FIELD_TRASHED
+  FIELD_RESTORED
+
+  // Registro
+  RECORD_CREATED
+  RECORD_UPDATED
+  RECORD_TRASHED
+  RECORD_RESTORED
+
+  // Comentarios
+  COMMENT_CREATED
+  COMMENT_EDITED
+  COMMENT_TRASHED
+
+  // Miembros
+  MEMBER_INVITED
+  MEMBER_ROLE_CHANGED
+  MEMBER_REMOVED
+}
+
+/* ============================================================
+   MODELOS PRINCIPALES
+   ============================================================ */
 
 model User {
   id           Int      @id @default(autoincrement())
@@ -77,9 +116,12 @@ model User {
   recordCellsCreated RecordCell[] @relation("RecordCellCreatedBy")
   recordCellsUpdated RecordCell[] @relation("RecordCellUpdatedBy")
 
-  // --- BACKREFS DE COMENTARIOS ---
-  commentsCreated Comment[] @relation("CommentAuthor") // NEW: comentarios escritos por este usuario (para auditoría/permisos)
-  commentsUpdated Comment[] @relation("CommentEditor") // NEW: comentarios editados por este usuario (histórico de edición)
+  // Comentarios
+  commentsCreated Comment[] @relation("CommentAuthor") // escritos por este usuario
+  commentsUpdated Comment[] @relation("CommentEditor") // editados por este usuario
+
+  // NEW: eventos de auditoría generados por este usuario
+  auditEvents AuditEvent[] @relation("AuditByUser")
 }
 
 model Workspace {
@@ -122,6 +164,9 @@ model Base {
   members BaseMember[]
   tables  TableDef[]
 
+  // NEW: backref de auditoría (eventos de esta base)
+  auditEvents AuditEvent[]
+
   @@unique([ownerId, name, isTrashed])
   @@index([ownerId])
   @@index([visibility])
@@ -158,6 +203,9 @@ model TableDef {
   fields  Field[]
   records RecordRow[]
 
+  // NEW: backref de auditoría
+  auditEvents AuditEvent[]
+
   @@unique([baseId, name, isTrashed])
   @@index([baseId])
   @@index([trashedAt])
@@ -165,11 +213,9 @@ model TableDef {
   @@index([baseId, position])
 }
 
-/**
- * ============================================================
- * COLUMNAS / REGISTROS
- * ============================================================
- */
+/* ============================================================
+   COLUMNAS / REGISTROS
+   ============================================================ */
 
 model Field {
   id       Int       @id @default(autoincrement())
@@ -194,15 +240,16 @@ model Field {
   cells   RecordCell[]
   options SelectOption[] // para SINGLE/MULTI
 
+  // NEW: backref de auditoría
+  auditEvents AuditEvent[]
+
   @@unique([tableId, name, isTrashed])
   @@index([tableId, position])
   @@index([isTrashed])
   @@index([trashedAt])
 }
 
-/**
- * Opciones para SINGLE_SELECT / MULTI_SELECT
- */
+/* Opciones para SINGLE_SELECT / MULTI_SELECT */
 model SelectOption {
   id      Int   @id @default(autoincrement())
   fieldId Int
@@ -245,7 +292,10 @@ model RecordRow {
   table TableDef     @relation(fields: [tableId], references: [id], onDelete: Cascade)
   cells RecordCell[]
 
-  comments Comment[] // NEW: backref para listar todos los comentarios asociados a esta fila
+  comments Comment[] // comentarios asociados a esta fila
+
+  // NEW: backref de auditoría
+  auditEvents AuditEvent[]
 
   @@index([tableId])
   @@index([updatedAt])
@@ -278,7 +328,7 @@ model RecordCell {
   // TIME
   timeMinutes Int?
 
-  // SINGLE_SELECT (relación directa, sin nombre)
+  // SINGLE_SELECT (relación directa)
   selectOptionId Int?
   selectOption   SelectOption? @relation(fields: [selectOptionId], references: [id], onDelete: SetNull)
 
@@ -303,30 +353,65 @@ model RecordCellOption {
   @@index([optionId])
 }
 
-/**
- * ============================================================
- * COMENTARIOS (por fila, sin hilos)
- * ============================================================
- */
+/* ============================================================
+   COMENTARIOS (por fila, sin hilos)
+   ============================================================ */
 model Comment {
-  id          Int       @id @default(autoincrement())                                                // NEW: id autoincremental del comentario
-  recordId    Int                                                                                   // NEW: FK a la fila comentada
-  record      RecordRow  @relation(fields: [recordId], references: [id], onDelete: Cascade)         // NEW: comentario pertenece a una fila; si la fila se borra, se borran sus comentarios
+  id          Int       @id @default(autoincrement())                           // id del comentario
+  recordId    Int                                                             // FK a la fila comentada
+  record      RecordRow  @relation(fields: [recordId], references: [id], onDelete: Cascade)
 
-  body        String                                                                                // NEW: contenido de texto del comentario
+  body        String                                                            // contenido
 
-  createdAt   DateTime   @default(now())                                                            // NEW: fecha/hora de creación
-  updatedAt   DateTime   @updatedAt                                                                 // NEW: fecha/hora de última edición
+  createdAt   DateTime   @default(now())                                        // creado
+  updatedAt   DateTime   @updatedAt                                             // última edición
 
-  createdById Int?                                                                                  // NEW: FK al autor (nullable para no romper si el usuario se elimina)
-  createdBy   User?      @relation("CommentAuthor", fields: [createdById], references: [id], onDelete: SetNull) // NEW: autor del comentario
-  updatedById Int?                                                                                  // NEW: FK al último editor (opcional)
-  updatedBy   User?      @relation("CommentEditor", fields: [updatedById], references: [id], onDelete: SetNull) // NEW: último editor del comentario
+  createdById Int?                                                               // autor (nullable)
+  createdBy   User?      @relation("CommentAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById Int?                                                               // último editor
+  updatedBy   User?      @relation("CommentEditor", fields: [updatedById], references: [id], onDelete: SetNull)
 
-  isTrashed   Boolean    @default(false)                                                            // NEW: soft delete (no se borra físico de inmediato)
-  trashedAt   DateTime?                                                                             // NEW: cuándo se mandó a papelera
+  isTrashed   Boolean    @default(false)                                         // soft delete
+  trashedAt   DateTime?                                                          // cuándo se mandó a papelera
 
-  @@index([recordId, createdAt])                                                                    // NEW: consultas por fila/orden cronológico
-  @@index([isTrashed])                                                                              // NEW: filtrar activos vs papelera
-  @@index([trashedAt])                                                                              // NEW: soporte para purgas por antigüedad
+  @@index([recordId, createdAt])
+  @@index([isTrashed])
+  @@index([trashedAt])
+}
+
+/* ============================================================
+   NEW: AUDITORÍA (historial de eventos)
+   - Un registro por acción relevante (crear/renombrar/trash/etc.)
+   - Siempre ligado a una Base (baseId); opcionalmente a tabla/fila/campo.
+   - Guarda actor (userId, ip), acción (enum) y payload (details) para diffs.
+   ============================================================ */
+model AuditEvent {
+  id        BigInt   @id @default(autoincrement())                 // id grande para alto volumen
+  createdAt DateTime @default(now())                               // timestamp del evento
+
+  // actor
+  userId Int?                                                       // usuario que ejecutó (nullable)
+  user   User? @relation(name: "AuditByUser", fields: [userId], references: [id], onDelete: SetNull)
+  ip     String?                                                    // IP opcional
+
+  // ámbito
+  baseId  Int                                                       // siempre pertenece a una base
+  base    Base      @relation(fields: [baseId], references: [id], onDelete: Cascade)
+  tableId Int?
+  table   TableDef?  @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  recordId Int?
+  record  RecordRow? @relation(fields: [recordId], references: [id], onDelete: SetNull)
+  fieldId Int?
+  field   Field?     @relation(fields: [fieldId], references: [id], onDelete: SetNull)
+
+  // acción
+  action  AuditAction                                               // código de acción
+  summary String                                                    // descripción legible (UI)
+  details Json?                                                     // payload/diff opcional
+
+  @@index([baseId, createdAt])
+  @@index([tableId])
+  @@index([recordId])
+  @@index([fieldId])
+  @@index([userId])
 }

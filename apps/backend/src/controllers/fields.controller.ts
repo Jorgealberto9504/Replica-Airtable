@@ -1,4 +1,3 @@
-// apps/backend/src/controllers/fields.controller.ts
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import {
@@ -22,6 +21,11 @@ import {
   deleteOptionPermanentSvc,
 } from '../services/fields.service.js';
 import { currentUserId } from '../utils/currentUser.js';
+
+// === NUEVO: auditoría detallada en update ===
+import { logAudit } from '../services/audit.service.js';
+import { AuditAction, FieldType } from '@prisma/client';
+import { prisma } from '../services/db.js';
 
 const FieldTypeSchema = z.enum([
   'TEXT',
@@ -79,6 +83,27 @@ export async function createField(req: Request, res: Response, next: NextFunctio
     const userId = currentUserId(req, res);
     const input = createFieldSchema.parse(req.body);
     const field = await createFieldSvc(tableId, input, userId);
+
+    // (opcional) auditoría de creación
+    try {
+      const base = await prisma.tableDef.findUnique({
+        where: { id: tableId },
+        select: { baseId: true },
+      });
+      if (base) {
+        await logAudit(undefined, {
+          userId,
+          ip: req.ip,
+          baseId: base.baseId,
+          tableId,
+          fieldId: field!.id,
+          action: AuditAction.FIELD_CREATED,
+          summary: `Creó la columna "${field!.name}"`,
+          details: { name: field!.name, type: field!.type as FieldType, position: field!.position },
+        });
+      }
+    } catch { /* no bloquear la operación por fallo de auditoría */ }
+
     res.json({ ok: true, field });
   } catch (e) { next(e); }
 }
@@ -89,7 +114,59 @@ export async function updateField(req: Request, res: Response, next: NextFunctio
     const fieldId = Number(req.params.fieldId);
     const userId = currentUserId(req, res);
     const patch = updateFieldSchema.parse(req.body);
+
+    // --- snapshot previo (incluye baseId para audit) ---
+    const before = await prisma.field.findFirst({
+      where: { id: fieldId, tableId, isTrashed: false },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        position: true,
+        table: { select: { baseId: true } },
+      },
+    });
+
     const field = await updateFieldSvc(tableId, fieldId, patch, userId);
+    if (!field) {
+      // Por tipado de Prisma podría devolver null; en la práctica no debería ocurrir
+      return res.status(500).json({ ok: false, error: 'No se pudo cargar la columna actualizada' });
+    }
+
+    // --- auditoría detallada (solo si teníamos snapshot previo) ---
+    if (before && before.table) {
+      const changes: Record<string, { from: any; to: any }> = {};
+      const parts: string[] = [];
+
+      if (patch.name !== undefined && field.name !== before.name) {
+        changes.name = { from: before.name, to: field.name };
+        parts.push(`nombre "${before.name}" → "${field.name}"`);
+      }
+
+      if (patch.type !== undefined && field.type !== before.type) {
+        changes.type = { from: before.type, to: field.type };
+        parts.push(`tipo ${before.type} → ${field.type}`);
+      }
+
+      if (patch.position !== undefined && field.position !== before.position) {
+        changes.position = { from: before.position, to: field.position };
+        parts.push(`posición ${before.position} → ${field.position}`);
+      }
+
+      if (Object.keys(changes).length > 0) {
+        await logAudit(undefined, {
+          userId,
+          ip: req.ip,
+          baseId: before.table.baseId,
+          tableId,
+          fieldId,
+          action: AuditAction.FIELD_UPDATED,
+          summary: `Actualizó columna ${parts.join(', ')}`,
+          details: { changes },
+        });
+      }
+    }
+
     res.json({ ok: true, field });
   } catch (e) { next(e); }
 }
@@ -99,7 +176,28 @@ export async function deleteField(req: Request, res: Response, next: NextFunctio
     const tableId = Number(req.params.tableId);
     const fieldId = Number(req.params.fieldId);
     const userId = currentUserId(req, res);
+
+    // snapshot para auditoría
+    const snap = await prisma.field.findFirst({
+      where: { id: fieldId, tableId, isTrashed: false },
+      select: { id: true, name: true, table: { select: { baseId: true } } },
+    });
+
     await deleteFieldSvc(tableId, fieldId, userId);
+
+    if (snap?.table) {
+      await logAudit(undefined, {
+        userId,
+        ip: req.ip,
+        baseId: snap.table.baseId,
+        tableId,
+        fieldId,
+        action: AuditAction.FIELD_TRASHED,
+        summary: `Envió a papelera la columna "${snap.name}"`,
+        details: { name: snap.name },
+      });
+    }
+
     res.json({ ok: true });
   } catch (e) { next(e); }
 }
@@ -108,7 +206,27 @@ export async function restoreField(req: Request, res: Response, next: NextFuncti
   try {
     const tableId = Number(req.params.tableId);
     const fieldId = Number(req.params.fieldId);
+
+    const before = await prisma.field.findUnique({
+      where: { id: fieldId },
+      select: { name: true, table: { select: { baseId: true } } },
+    });
+
     const field = await restoreFieldSvc(tableId, fieldId);
+
+    if (before?.table) {
+      await logAudit(undefined, {
+        userId: currentUserId(req, res),
+        ip: req.ip,
+        baseId: before.table.baseId,
+        tableId,
+        fieldId,
+        action: AuditAction.FIELD_RESTORED,
+        summary: `Restauró la columna "${field.name}"`,
+        details: { name: field.name, position: field.position },
+      });
+    }
+
     res.json({ ok: true, field });
   } catch (e) { next(e); }
 }

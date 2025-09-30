@@ -1,3 +1,5 @@
+// apps/backend/src/services/fields.service.ts
+
 import { prisma } from './db.js';
 import { Prisma, FieldType } from '@prisma/client';
 import { badRequest, conflict, notFound } from '../utils/errors.js';
@@ -82,6 +84,28 @@ export async function listFieldsSvc(tableId: number) {
       },
     },
   });
+}
+
+/** Snapshot mínimo para auditoría: incluye baseId via relación table */
+export async function getFieldSnapshotForAuditSvc(tableId: number, fieldId: number) {
+  const row = await prisma.field.findFirst({
+    where: { id: fieldId, tableId },
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      position: true,
+      table: { select: { baseId: true } },
+    },
+  });
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    type: row.type,
+    position: row.position,
+    baseId: row.table.baseId,
+  };
 }
 
 type CreateFieldInput = {

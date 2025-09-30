@@ -1,8 +1,15 @@
+// apps/backend/src/services/comments.service.ts
 import { prisma } from './db.js';
 import { badRequest, forbidden, notFound } from '../utils/errors.js';
-import { BaseRole, PlatformRole } from '@prisma/client';
+import { AuditAction, BaseRole, PlatformRole } from '@prisma/client';
+import { logAudit } from './audit.service.js';
 
-/* ========= Helpers de autorización ========= */
+/* ========= Helpers ========= */
+
+function makeSnippet(s: string, max = 140) {
+  const t = s.trim().replace(/\s+/g, ' ');
+  return t.length > max ? t.slice(0, max - 1) + '…' : t;
+}
 
 async function getBaseContextByTable(tableId: number) {
   const t = await prisma.tableDef.findUnique({
@@ -119,6 +126,18 @@ export async function createCommentSvc(
     },
   });
 
+  // ===== AUDITORÍA =====
+  const { baseId } = await getBaseContextByTable(tableId);
+  await logAudit(undefined, {
+    baseId,
+    tableId,
+    recordId,
+    userId: userId ?? undefined,
+    action: AuditAction.COMMENT_CREATED,
+    summary: `Agregó un comentario en la fila #${recordId}`,
+    details: { commentId: c.id, snippet: makeSnippet(body) },
+  });
+
   return c;
 }
 
@@ -133,11 +152,11 @@ export async function updateCommentSvc(
   if (!body || !body.trim()) throw badRequest('El comentario no puede estar vacío.');
 
   // Confirma pertenencia a la fila/tabla
-  const c = await prisma.comment.findUnique({
+  const current = await prisma.comment.findUnique({
     where: { id: commentId },
-    select: { id: true, recordId: true, record: { select: { tableId: true } } },
+    select: { id: true, body: true, recordId: true, record: { select: { tableId: true } } },
   });
-  if (!c || c.recordId !== recordId || c.record.tableId !== tableId) {
+  if (!current || current.recordId !== recordId || current.record.tableId !== tableId) {
     throw notFound('Comentario no encontrado en esta fila.');
   }
 
@@ -149,6 +168,23 @@ export async function updateCommentSvc(
     where: { id: commentId },
     data: { body: body.trim(), updatedById: userId ?? undefined },
   });
+
+  // ===== AUDITORÍA =====
+  const { baseId } = await getBaseContextByTable(tableId);
+  await logAudit(undefined, {
+    baseId,
+    tableId,
+    recordId,
+    userId: userId ?? undefined,
+    action: AuditAction.COMMENT_EDITED,
+    summary: `Editó un comentario en la fila #${recordId}`,
+    details: {
+      commentId,
+      oldSnippet: makeSnippet(current.body),
+      newSnippet: makeSnippet(body),
+    },
+  });
+
   return { ok: true };
 }
 
@@ -161,7 +197,7 @@ export async function softDeleteCommentSvc(
 ) {
   const c = await prisma.comment.findUnique({
     where: { id: commentId },
-    select: { id: true, recordId: true, record: { select: { tableId: true } } },
+    select: { id: true, body: true, recordId: true, record: { select: { tableId: true } } },
   });
   if (!c || c.recordId !== recordId || c.record.tableId !== tableId) {
     throw notFound('Comentario no encontrado en esta fila.');
@@ -175,6 +211,19 @@ export async function softDeleteCommentSvc(
     where: { id: commentId },
     data: { isTrashed: true, trashedAt: new Date() },
   });
+
+  // ===== AUDITORÍA =====
+  const { baseId } = await getBaseContextByTable(tableId);
+  await logAudit(undefined, {
+    baseId,
+    tableId,
+    recordId,
+    userId: userId ?? undefined,
+    action: AuditAction.COMMENT_TRASHED,
+    summary: `Eliminó un comentario en la fila #${recordId}`,
+    details: { commentId, snippet: makeSnippet(c.body) },
+  });
+
   return { ok: true };
 }
 
