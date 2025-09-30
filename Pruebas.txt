@@ -382,7 +382,17 @@ http://localhost:8080/bases/1/tables/1/records/3/comments/1/restore
 
 
 
+
+
+
+
 tarea 10.4<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+
+Traer el ultimo cambio o Lastchange para tu columna de ultima actividad en la fila con   GET
+http://localhost:8080/bases/1/tables/1/records
+
+
 
 {
   "email": "admin@mbqinc.com",
